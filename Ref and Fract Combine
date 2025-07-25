@@ -1,0 +1,216 @@
+Sub GenerateCombinedRefineryPTRReport()
+    Dim refFilePath As String, ptrFilePath As String
+    Dim sheetName As String, todayDay As Integer
+    Dim wsTarget As Worksheet, currentRow As Long
+
+    todayDay = Day(Date - 1)
+    sheetName = CStr(todayDay)
+    refFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
+    ptrFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Pre-Treatment Production Report Juli 2025  (HO) Flowmeter.xlsx"
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    On Error Resume Next
+    Set wsTarget = ThisWorkbook.Sheets(sheetName)
+    If wsTarget Is Nothing Then
+        Set wsTarget = ThisWorkbook.Sheets.Add(After:=Sheets(Sheets.Count))
+        wsTarget.Name = sheetName
+    Else
+        wsTarget.Cells.Clear
+    End If
+    On Error GoTo 0
+
+    currentRow = 1
+    Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
+    Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
+    Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsTarget, currentRow, todayDay)
+    Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
+    Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
+
+    Application.ScreenUpdating = True
+    MsgBox "Laporan gabungan berhasil dibuat di sheet '" & sheetName & "'", vbInformation
+End Sub
+
+' ------------------ REFINERY & PTR ------------------
+Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long, i As Long
+    Dim matchingRows As Collection
+    Dim cell As Range, mergeVal As Variant
+    Dim totalCPOKg As Double, totalRBDPOKg As Double, totalPFADKg As Double
+    Dim weightedSteam As Double, weightedElectricity As Double
+    Dim weightedBE As Double, weightedPA As Double
+    Dim weightedCPOFFA As Double, weightedRBDPOFFA As Double
+    Dim weightedRBDPOCol As Double, weightedPFADPurity As Double
+    Dim rowCPO As Double
+    Dim downtimeText As String
+    Dim r As Variant
+
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+
+    Set matchingRows = New Collection
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    For i = 10 To lastRow
+        Set cell = ws.Cells(i, 1)
+        If cell.MergeCells Then
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = cell.Value
+        End If
+        If mergeVal = targetDay Then matchingRows.Add i
+    Next i
+
+    If matchingRows.Count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
+        wb.Close False
+        Exit Sub
+    End If
+
+    For Each r In matchingRows
+        rowCPO = GetCellVal(ws, CLng(r), "input", "kg", 8, 9)
+        totalCPOKg = totalCPOKg + rowCPO
+        totalRBDPOKg = totalRBDPOKg + GetCellVal(ws, CLng(r), "rbd output", "kg", 8, 9)
+        totalPFADKg = totalPFADKg + GetCellVal(ws, CLng(r), "pfad output", "kg", 8, 9)
+
+        weightedSteam = weightedSteam + rowCPO * GetCellVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
+        weightedElectricity = weightedElectricity + rowCPO * GetCellVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
+        weightedBE = weightedBE + rowCPO * GetCellVal(ws, CLng(r), "bleaching earth", "%", 8, 9)
+        weightedPA = weightedPA + rowCPO * GetCellVal(ws, CLng(r), "phosphoric acid", "%", 8, 9)
+        weightedCPOFFA = weightedCPOFFA + rowCPO * GetCellVal(ws, CLng(r), "input", "ffa", 8, 9)
+        weightedRBDPOFFA = weightedRBDPOFFA + rowCPO * GetCellVal(ws, CLng(r), "rbd output", "%ffa", 8, 9)
+        weightedRBDPOCol = weightedRBDPOCol + rowCPO * GetCellVal(ws, CLng(r), "rbd output", "col", 8, 9)
+        weightedPFADPurity = weightedPFADPurity + rowCPO * GetCellVal(ws, CLng(r), "pfad output", "%ffa", 8, 9)
+
+        If downtimeText = "" Then
+            downtimeText = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+        End If
+    Next r
+
+    wb.Close False
+
+    Dim cpoMT As Long, rbdpoMT As Long, pfadMT As Long
+    Dim rbdpoPct As Double, pfadPct As Double
+
+    cpoMT = Round(totalCPOKg / 1000)
+    rbdpoMT = Round(totalRBDPOKg / 1000)
+    pfadMT = Round(totalPFADKg / 1000)
+
+    If totalCPOKg > 0 Then
+        rbdpoPct = totalRBDPOKg / totalCPOKg * 100
+        pfadPct = totalPFADKg / totalCPOKg * 100
+    End If
+
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel: row = row + 1
+        .Cells(row, 1).Value = "Quantity": row = row + 1
+        .Cells(row, 1).Value = "CPO process : " & cpoMT & " MT": row = row + 1
+        .Cells(row, 1).Value = "RBDPO : " & rbdpoMT & " MT (" & Format(rbdpoPct, "0.00") & " %)": row = row + 1
+        .Cells(row, 1).Value = "PFAD : " & pfadMT & " MT (" & Format(pfadPct, "0.00") & " %)": row = row + 1
+        .Cells(row, 1).Value = "Consumption": row = row + 1
+        .Cells(row, 1).Value = "Steam : " & Round(weightedSteam / totalCPOKg, 0) & " kg/MT cpo": row = row + 1
+        .Cells(row, 1).Value = "Elect : " & Round(weightedElectricity / totalCPOKg, 0) & " kWh/MT": row = row + 1
+        .Cells(row, 1).Value = "BE : " & Format(weightedBE / totalCPOKg, "0.00") & " %": row = row + 1
+        .Cells(row, 1).Value = "PA : " & Format(weightedPA / totalCPOKg, "0.00") & " %": row = row + 1
+        .Cells(row, 1).Value = "Quality": row = row + 1
+        .Cells(row, 1).Value = "CPO FFA : " & Format(weightedCPOFFA / totalCPOKg, "0.00") & " %": row = row + 1
+        .Cells(row, 1).Value = "RBDPO FFA : " & Format(weightedRBDPOFFA / totalCPOKg, "0.00") & " %": row = row + 1
+        .Cells(row, 1).Value = "Color RBDPO : " & Format(weightedRBDPOCol / totalCPOKg, "0.0"): row = row + 1
+        .Cells(row, 1).Value = "PFAD purity : " & Format(weightedPFADPurity / totalCPOKg, "0.00") & " %": row = row + 1
+        If downtimeText <> "" Then
+            .Cells(row, 1).Value = downtimeText: row = row + 1
+        End If
+        row = row + 1
+    End With
+End Sub
+
+' ------------------ FRACTINATION ------------------
+Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
+    Dim wb As Workbook, ws As Worksheet
+    Dim rbdpoKg As Double, oleinKg As Double, stearinKg As Double
+    Dim steamVal As Variant, electVal As Variant, waterVal As Variant, downtimeText As String
+    Dim i As Long, lastRow As Long
+    Dim cell As Range, mergeVal As Variant
+    Dim matchingRows As Collection, r As Variant
+    Dim firstMatchRow As Long
+
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+    Set matchingRows = New Collection
+
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    For i = 10 To lastRow
+        Set cell = ws.Cells(i, 1)
+        If cell.MergeCells Then
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = cell.Value
+        End If
+        If mergeVal = targetDay Then matchingRows.Add i
+    Next i
+
+    If matchingRows.Count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
+        wb.Close False
+        Exit Sub
+    End If
+
+    For Each r In matchingRows
+        rbdpoKg = rbdpoKg + GetCellVal(ws, CLng(r), "rbdpo input", "kg", 8, 9)
+        oleinKg = oleinKg + GetCellVal(ws, CLng(r), "rbdol output", "kg", 8, 9)
+        stearinKg = stearinKg + GetCellVal(ws, CLng(r), "rbdst output", "kg", 8, 9)
+        If downtimeText = "" Then downtimeText = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+    Next r
+
+    firstMatchRow = CLng(matchingRows(1))
+    steamVal = GetCellVal(ws, firstMatchRow, "steam", "kg/mt", 8, 9)
+    electVal = GetCellVal(ws, firstMatchRow, "electricity", "kwh/mt", 8, 9)
+    waterVal = GetCellVal(ws, firstMatchRow, "water", "kg/mt", 8, 9)
+
+    wb.Close False
+
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel: row = row + 1
+        .Cells(row, 1).Value = "Quantity": row = row + 1
+        .Cells(row, 1).Value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+        .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/MT": row = row + 1
+        .Cells(row, 1).Value = "Elect : " & Format(electVal, "0.00") & " kwh/MT": row = row + 1
+        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.00") & " Kg/MT RBDPO": row = row + 1
+        If downtimeText <> "" Then
+            .Cells(row, 1).Value = downtimeText: row = row + 1
+        End If
+        row = row + 1
+    End With
+End Sub
+
+' ------------------ UTIL ------------------
+Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
+    Dim lastCol As Long, col As Long, h1 As String, h2 As String
+    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+    For col = 2 To lastCol
+        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+        If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+            GetCellVal = ws.Cells(row, col).Value
+            Exit Function
+        End If
+    Next col
+    GetCellVal = 0
+End Function
+
+Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
+    Dim lastCol As Long, col As Long, h1 As String, h2 As String
+    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+    For col = 2 To lastCol
+        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+        If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+            GetTextVal = CStr(ws.Cells(row, col).Value)
+            Exit Function
+        End If
+    Next col
+    GetTextVal = ""
+End Function
