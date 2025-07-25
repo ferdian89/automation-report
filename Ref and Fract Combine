@@ -166,7 +166,7 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
     firstMatchRow = CLng(matchingRows(1))
     steamVal = GetCellVal(ws, firstMatchRow, "steam", "kg/mt", 8, 9)
     electVal = GetCellVal(ws, firstMatchRow, "electricity", "kwh/mt", 8, 9)
-    waterVal = GetCellVal(ws, firstMatchRow, "water", "kg/mt", 8, 9)
+    waterVal = GetCellVal(ws, firstMatchRow, "water", "m3/mt", 8, 9)
 
     wb.Close False
 
@@ -178,7 +178,7 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
         .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
         .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/MT": row = row + 1
         .Cells(row, 1).Value = "Elect : " & Format(electVal, "0.00") & " kwh/MT": row = row + 1
-        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.00") & " Kg/MT RBDPO": row = row + 1
+        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.00") & " m3/MT RBDPO": row = row + 1
         If downtimeText <> "" Then
             .Cells(row, 1).Value = downtimeText: row = row + 1
         End If
