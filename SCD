@@ -1,5 +1,4 @@
 Sub GetSCDPlant_OutputFinal()
-
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
@@ -9,17 +8,18 @@ Sub GetSCDPlant_OutputFinal()
     Dim targetSender As String
     Dim targetDate As Date, searchValueDate As Date
     Dim i As Long, lastDataRow As Long
-    Dim inputCol As Long, descCol As Long, maxCol As Long
-    Dim foundInputCol As Boolean, foundDescCol As Boolean
+    Dim inputCol As Long, prodCol As Long, maxCol As Long
+    Dim foundInputCol As Boolean, foundProdCol As Boolean
     Dim inputProcessedTotal As Double
     Dim dictProducts As Object, dictDescriptions As Object
-    Dim prod As String, desc As String, key As Variant
+    Dim prod As String, desc1 As String, desc2 As String, descCombined As String, key As Variant
     Dim joinedProducts As String, joinedDescriptions As String
+    Dim descColBX As Long, descColCN As Long
 
     ' Parameter
     targetSender = "Ferry Hermansyah Lubis"
     targetDate = DateSerial(2025, 7, 24)
-    searchValueDate = DateSerial(2025, 7, 16)
+    searchValueDate = DateSerial(2025, 7, 14) ' Ganti sesuai kebutuhan
 
     Set dictProducts = CreateObject("Scripting.Dictionary")
     Set dictDescriptions = CreateObject("Scripting.Dictionary")
@@ -53,41 +53,62 @@ Sub GetSCDPlant_OutputFinal()
                                         lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).Row
                                         maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
 
-                                        ' Cari kolom Input Processed dan Description
+                                        ' Tentukan kolom Description manual (kolom BX = 76, CN = 92)
+                                        descColBX = 76
+                                        descColCN = 92
+
+                                        ' Cari kolom Product + Refined, dan Input Processed
                                         For i = 1 To maxCol
+                                            If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Product" And _
+                                               Trim(xlWs.Cells(10, i).Value) = "Refined" Then
+                                                prodCol = i
+                                                foundProdCol = True
+                                            End If
+
                                             If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
                                                Trim(xlWs.Cells(10, i).Value) = "Kg" Then
                                                 inputCol = i
                                                 foundInputCol = True
                                             End If
-
-                                            If LCase(Trim(xlWs.Cells(10, i).Value)) = "Description" Then
-                                                descCol = i
-                                                foundDescCol = True
-                                            End If
                                         Next i
 
-                                        If foundInputCol Then
+                                        If foundProdCol Or foundInputCol Then
                                             For i = 1 To lastDataRow
                                                 If IsDate(xlWs.Cells(i, 1).Value) Then
                                                     If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
 
                                                         ' Ambil Product
-                                                        prod = Trim(xlWs.Cells(i, 2).Value)
-                                                        If prod <> "" And Not dictProducts.exists(prod) Then
-                                                            dictProducts.Add prod, True
+                                                        If foundProdCol Then
+                                                            prod = Trim(xlWs.Cells(i, prodCol).Value)
+                                                            If prod <> "" And Not dictProducts.exists(prod) Then
+                                                                dictProducts.Add prod, True
+                                                            End If
                                                         End If
 
                                                         ' Ambil Input Processed
-                                                        If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
-                                                            inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
+                                                        If foundInputCol Then
+                                                            If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
+                                                                inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
+                                                            End If
                                                         End If
 
-                                                        ' Ambil Description
-                                                        If foundDescCol Then
-                                                            desc = Trim(xlWs.Cells(i, descCol).Value)
-                                                            If desc <> "" And Not dictDescriptions.exists(desc) Then
-                                                                dictDescriptions.Add desc, True
+                                                        ' Ambil Description dari kolom BX dan CN
+                                                        desc1 = Trim(xlWs.Cells(i, descColBX).Value)
+                                                        desc2 = Trim(xlWs.Cells(i, descColCN).Value)
+                                                        descCombined = ""
+
+                                                        If desc1 <> "" Then descCombined = desc1
+                                                        If desc2 <> "" Then
+                                                            If descCombined <> "" Then
+                                                                descCombined = descCombined & ", " & desc2
+                                                            Else
+                                                                descCombined = desc2
+                                                            End If
+                                                        End If
+
+                                                        If descCombined <> "" Then
+                                                            If Not dictDescriptions.exists(descCombined) Then
+                                                                dictDescriptions.Add descCombined, True
                                                             End If
                                                         End If
                                                     End If
@@ -148,7 +169,7 @@ Sub GetSCDPlant_OutputFinal()
     Next
 
     MsgBox "Email atau file tidak ditemukan.", vbExclamation
-
 End Sub
+
 
 
