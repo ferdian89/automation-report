@@ -1,43 +1,46 @@
-Sub GetSCDPlant_OutputPerRow()
+Sub GetSCDPlant_OutputFinal()
 
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
     Dim wsDest As Worksheet
     Dim tempFile As String
-    Dim productList As String, inputProcessedTotal As Double
     Dim lastRow As Long
     Dim targetSender As String
     Dim targetDate As Date, searchValueDate As Date
     Dim i As Long, lastDataRow As Long
-    Dim inputCol As Long, maxCol As Long
-    Dim foundInputCol As Boolean
-    Dim dictProducts As Object
-    Set dictProducts = CreateObject("Scripting.Dictionary")
+    Dim inputCol As Long, descCol As Long, maxCol As Long
+    Dim foundInputCol As Boolean, foundDescCol As Boolean
+    Dim inputProcessedTotal As Double
+    Dim dictProducts As Object, dictDescriptions As Object
+    Dim prod As String, desc As String, key As Variant
+    Dim joinedProducts As String, joinedDescriptions As String
 
     ' Parameter
     targetSender = "Ferry Hermansyah Lubis"
     targetDate = DateSerial(2025, 7, 24)
-    searchValueDate = DateSerial(2025, 7, 22)
+    searchValueDate = DateSerial(2025, 7, 16)
 
+    Set dictProducts = CreateObject("Scripting.Dictionary")
+    Set dictDescriptions = CreateObject("Scripting.Dictionary")
     Set wsDest = ThisWorkbook.ActiveSheet
 
     ' Buka Outlook dan cari email
     Set olApp = GetObject(, "Outlook.Application")
     Set olNs = olApp.GetNamespace("MAPI")
-    Set olFolder = olNs.GetDefaultFolder(6)
+    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
     Set olItems = olFolder.Items
     olItems.Sort "ReceivedTime", True
 
     For Each olMail In olItems
         If TypeName(olMail) = "MailItem" Then
             If Int(olMail.ReceivedTime) = targetDate Then
-                If InStr(1, olMail.SenderName, targetSender, vbTextCompare) > 0 Then
+                If InStr(1, olMail.senderName, targetSender, vbTextCompare) > 0 Then
                     If olMail.Attachments.Count > 0 Then
                         For Each olAtmt In olMail.Attachments
-                            If InStr(1, olAtmt.Filename, "02.Daily Report SCD  Hydro Plant (HO) Juli 2025.xlsx", vbTextCompare) > 0 Then
+                            If InStr(1, olAtmt.FileName, "02.Daily Report SCD  Hydro Plant (HO) Juli 2025.xlsx", vbTextCompare) > 0 Then
 
-                                tempFile = Environ("TEMP") & "\" & olAtmt.Filename
+                                tempFile = Environ("TEMP") & "\" & olAtmt.FileName
                                 On Error Resume Next: Kill tempFile: On Error GoTo 0
                                 olAtmt.SaveAsFile tempFile
 
@@ -50,13 +53,17 @@ Sub GetSCDPlant_OutputPerRow()
                                         lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).Row
                                         maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
 
-                                        ' Cari kolom Input Processed (merged) dengan row 9 dan row 10 = Kg
+                                        ' Cari kolom Input Processed dan Description
                                         For i = 1 To maxCol
                                             If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
-                                               LCase(Trim(xlWs.Cells(10, i).Value)) = "kg" Then
+                                               Trim(xlWs.Cells(10, i).Value) = "Kg" Then
                                                 inputCol = i
                                                 foundInputCol = True
-                                                Exit For
+                                            End If
+
+                                            If LCase(Trim(xlWs.Cells(10, i).Value)) = "Description" Then
+                                                descCol = i
+                                                foundDescCol = True
                                             End If
                                         Next i
 
@@ -64,14 +71,24 @@ Sub GetSCDPlant_OutputPerRow()
                                             For i = 1 To lastDataRow
                                                 If IsDate(xlWs.Cells(i, 1).Value) Then
                                                     If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
-                                                        Dim prod As String
+
+                                                        ' Ambil Product
                                                         prod = Trim(xlWs.Cells(i, 2).Value)
                                                         If prod <> "" And Not dictProducts.exists(prod) Then
                                                             dictProducts.Add prod, True
                                                         End If
 
+                                                        ' Ambil Input Processed
                                                         If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
                                                             inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
+                                                        End If
+
+                                                        ' Ambil Description
+                                                        If foundDescCol Then
+                                                            desc = Trim(xlWs.Cells(i, descCol).Value)
+                                                            If desc <> "" And Not dictDescriptions.exists(desc) Then
+                                                                dictDescriptions.Add desc, True
+                                                            End If
                                                         End If
                                                     End If
                                                 End If
@@ -86,8 +103,7 @@ Sub GetSCDPlant_OutputPerRow()
                                 xlApp.Quit
                                 Set xlApp = Nothing: Set xlWb = Nothing
 
-                                ' Siapkan isi
-                                Dim joinedProducts As String, key As Variant
+                                ' Gabungkan hasil
                                 For Each key In dictProducts.Keys
                                     If joinedProducts = "" Then
                                         joinedProducts = key
@@ -96,13 +112,32 @@ Sub GetSCDPlant_OutputPerRow()
                                     End If
                                 Next key
 
-                                ' Cari baris kosong berikutnya
+                                For Each key In dictDescriptions.Keys
+                                    If joinedDescriptions = "" Then
+                                        joinedDescriptions = key
+                                    Else
+                                        joinedDescriptions = joinedDescriptions & ", " & key
+                                    End If
+                                Next key
+
+                                ' Tulis ke worksheet
                                 lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 2
                                 wsDest.Cells(lastRow, 1).Value = "SCD Plant"
                                 wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-                                wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal, "#,##0.00")
+                                If inputProcessedTotal > 0 Then
+                                    wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
+                                Else
+                                    wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
+                                    wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
+                                End If
 
-                                MsgBox "Output berhasil ditulis ke worksheet.", vbInformation
+                                If joinedDescriptions <> "" Then
+                                    Dim descRow As Long
+                                    descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
+                                    wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
+                                End If
+
+                                MsgBox "Output SCD berhasil ditulis.", vbInformation
                                 Exit Sub
                             End If
                         Next
@@ -112,7 +147,7 @@ Sub GetSCDPlant_OutputPerRow()
         End If
     Next
 
-    MsgBox "Email atau data tidak ditemukan.", vbExclamation
+    MsgBox "Email atau file tidak ditemukan.", vbExclamation
 
 End Sub
 
