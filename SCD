@@ -1,6 +1,7 @@
 Sub GetO136FromEmail_Ferry_ToTodaySheet()
+
     Dim olApp As Object, olNs As Object, olFolder As Object
-    Dim olMail As Object, olAtmt As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim xlApp As Object, xlWb As Object, xlWs As Object, sh As Object
     Dim wsDest As Worksheet
     Dim tempFile As String
@@ -8,16 +9,14 @@ Sub GetO136FromEmail_Ferry_ToTodaySheet()
     Dim todaySheetName As String
     Dim lastRow As Long
 
-    ' Parameter pencarian
     Dim targetSender As String
     Dim targetDate As Date
     Dim targetAttachment As String
 
+    ' Parameter pencarian
     targetSender = "Ferry Hermansyah Lubis"
     targetDate = DateSerial(2025, 7, 24)
     targetAttachment = "02.Daily Report SCD  Hydro Plant (HO) Juli 2025.xlsx"
-
-    ' Nama sheet berdasarkan tanggal hari ini (tanpa bulan/tahun)
     todaySheetName = CStr(Day(Date))
 
     ' Buat atau ambil sheet tujuan
@@ -33,30 +32,30 @@ Sub GetO136FromEmail_Ferry_ToTodaySheet()
     Set olApp = GetObject(, "Outlook.Application")
     Set olNs = olApp.GetNamespace("MAPI")
     Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "ReceivedTime", True
 
-    For Each olMail In olFolder.Items
+    For Each olMail In olItems
         If TypeName(olMail) = "MailItem" Then
             If Int(olMail.ReceivedTime) = targetDate Then
-                If olMail.SenderName = targetSender Then
+                If InStr(1, olMail.SenderName, targetSender, vbTextCompare) > 0 Then
                     If olMail.Attachments.Count > 0 Then
                         For Each olAtmt In olMail.Attachments
-                            If olAtmt.fileName = targetAttachment Then
+                            If StrComp(olAtmt.fileName, targetAttachment, vbTextCompare) = 0 Then
 
                                 ' Simpan attachment sementara
                                 tempFile = Environ("TEMP") & "\" & olAtmt.fileName
-                                On Error Resume Next
-                                Kill tempFile
-                                On Error GoTo 0
+                                On Error Resume Next: Kill tempFile: On Error GoTo 0
                                 olAtmt.SaveAsFile tempFile
 
-                                ' Buka file Excel, baca SCD!O136
+                                ' Buka Excel dan baca O136 dari sheet SCD
                                 Set xlApp = CreateObject("Excel.Application")
                                 xlApp.Visible = False
                                 Set xlWb = xlApp.Workbooks.Open(tempFile, ReadOnly:=True)
 
                                 Set xlWs = Nothing
                                 For Each sh In xlWb.Sheets
-                                    If Trim(sh.Name) = "SCD" Then
+                                    If LCase(Replace(Trim(sh.Name), " ", "")) Like "scd" Then
                                         Set xlWs = sh
                                         Exit For
                                     End If
@@ -72,7 +71,7 @@ Sub GetO136FromEmail_Ferry_ToTodaySheet()
                                 xlApp.Quit
                                 Set xlApp = Nothing
 
-                                ' Tulis ke sheet tujuan
+                                ' Tulis hasil ke sheet tujuan
                                 lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 1
                                 wsDest.Cells(lastRow, 1).Value = olAtmt.fileName
                                 If IsNumeric(foundValue) Then
@@ -94,4 +93,3 @@ Sub GetO136FromEmail_Ferry_ToTodaySheet()
     MsgBox "Email dengan kriteria tidak ditemukan.", vbExclamation
 
 End Sub
-
