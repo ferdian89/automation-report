@@ -1,0 +1,173 @@
+Sub GetIEFATPlant_OutputFinal()
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
+    Dim wsDest As Worksheet
+    Dim tempFile As String
+    Dim lastRow As Long
+    Dim targetSender As String
+    Dim targetDate As Date, searchValueDate As Date
+    Dim i As Long, lastDataRow As Long
+    Dim inputCol As Long, prodCol As Long, maxCol As Long
+    Dim foundInputCol As Boolean, foundProdCol As Boolean
+    Dim inputProcessedTotal As Double
+    Dim dictProducts As Object, dictDescriptions As Object
+    Dim prod As String, descText As String, key As Variant
+    Dim joinedProducts As String, joinedDescriptions As String
+    Dim descCol As Long
+    Dim descRow As Long
+    Dim sheetLabel As String
+    Dim headerRow1 As Long, headerRow2 As Long
+
+    ' Parameter
+    targetSender = "Ferry Hermansyah Lubis"
+    targetDate = DateSerial(2025, 7, 24)
+    searchValueDate = DateSerial(2025, 7, 22)
+
+    ' Buka Outlook
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then
+        MsgBox "Outlook is not running.", vbCritical
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6)
+    Set olItems = olFolder.Items
+    olItems.Sort "ReceivedTime", True
+
+    ' Siapkan worksheet tujuan
+    Set wsDest = ThisWorkbook.ActiveSheet
+
+    For Each olMail In olItems
+        If TypeName(olMail) = "MailItem" Then
+            If Int(olMail.ReceivedTime) = targetDate Then
+                If InStr(1, olMail.senderName, targetSender, vbTextCompare) > 0 Then
+                    If olMail.Attachments.Count > 0 Then
+                        For Each olAtmt In olMail.Attachments
+                            If InStr(1, olAtmt.FileName, "02.Daily Report SCD  Hydro Plant (HO) Juli 2025.xlsx", vbTextCompare) > 0 Then
+
+                                tempFile = Environ("TEMP") & "\" & olAtmt.FileName
+                                On Error Resume Next: Kill tempFile: On Error GoTo 0
+                                olAtmt.SaveAsFile tempFile
+
+                                Set xlApp = CreateObject("Excel.Application")
+                                xlApp.Visible = False
+                                Set xlWb = xlApp.Workbooks.Open(tempFile, ReadOnly:=True)
+
+                                ' === Proses untuk sheet IE-FAT dan Hydrogenation ===
+                                For Each xlWs In xlWb.Sheets
+                                    If LCase(xlWs.Name) Like "*ie-fat*" Or LCase(xlWs.Name) Like "*hydrogenation*" Then
+                                        Set dictProducts = CreateObject("Scripting.Dictionary")
+                                        Set dictDescriptions = CreateObject("Scripting.Dictionary")
+                                        inputProcessedTotal = 0
+                                        foundProdCol = False
+                                        foundInputCol = False
+
+                                        If LCase(xlWs.Name) Like "*ie-fat*" Then
+                                            sheetLabel = "IE-FAT Plant"
+                                            headerRow1 = 6
+                                            headerRow2 = 7
+                                            descCol = 48 ' AV
+                                        ElseIf LCase(xlWs.Name) Like "*hydrogenation*" Then
+                                            sheetLabel = "Hydrogenation"
+                                            headerRow1 = 9
+                                            headerRow2 = 10
+                                            descCol = 51 ' AY
+                                        End If
+
+                                        With xlWs
+                                            lastDataRow = .Cells(.Rows.Count, 1).End(xlUp).Row
+                                            maxCol = .Cells(headerRow1, .Columns.Count).End(xlToLeft).Column
+
+                                            ' Cari kolom
+                                            For i = 1 To maxCol
+                                                If Trim(.Cells(headerRow1, i).MergeArea.Cells(1, 1).Value) = "Product" And _
+                                                   LCase(Trim(.Cells(headerRow2, i).Value)) = "hydrogenated" Then
+                                                    prodCol = i
+                                                    foundProdCol = True
+                                                End If
+
+                                                If Trim(.Cells(headerRow1, i).MergeArea.Cells(1, 1).Value) = "Input processed" And _
+                                                   LCase(Trim(.Cells(headerRow2, i).Value)) = "kg" Then
+                                                    inputCol = i
+                                                    foundInputCol = True
+                                                End If
+                                            Next i
+
+                                            ' Ambil nilai data
+                                            If foundProdCol Or foundInputCol Then
+                                                For i = 1 To lastDataRow
+                                                    If IsDate(.Cells(i, 1).Value) Then
+                                                        If DateValue(.Cells(i, 1).Value) = searchValueDate Then
+                                                            If foundProdCol Then
+                                                                prod = Trim(.Cells(i, prodCol).Value)
+                                                                If prod <> "" And Not dictProducts.exists(prod) Then
+                                                                    dictProducts.Add prod, True
+                                                                End If
+                                                            End If
+                                                            If foundInputCol Then
+                                                                If IsNumeric(.Cells(i, inputCol).Value) Then
+                                                                    inputProcessedTotal = inputProcessedTotal + CDbl(.Cells(i, inputCol).Value)
+                                                                End If
+                                                            End If
+                                                            descText = Trim(.Cells(i, descCol).Value2)
+                                                            If descText <> "" Then
+                                                                If Not dictDescriptions.exists(descText) Then
+                                                                    dictDescriptions.Add descText, True
+                                                                End If
+                                                            End If
+                                                        End If
+                                                    End If
+                                                Next i
+                                            End If
+                                        End With
+
+                                        ' Gabungkan hasil
+                                        joinedProducts = JoinDictionaryKeys(dictProducts)
+                                        joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
+
+                                        ' Tulis ke worksheet
+                                        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 2
+                                        wsDest.Cells(lastRow, 1).Value = sheetLabel
+
+                                        If inputProcessedTotal > 0 Then
+                                            wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
+                                            wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
+                                            If joinedDescriptions <> "" Then
+                                                wsDest.Cells(lastRow + 3, 1).Value = "Description : " & joinedDescriptions
+                                            End If
+                                        Else
+                                            wsDest.Cells(lastRow + 1, 1).Value = "Stop plant / No Order fit planning PPIC"
+                                        End If
+                                    End If
+                                Next xlWs
+
+                                xlWb.Close False
+                                xlApp.Quit
+                                Set xlApp = Nothing: Set xlWb = Nothing
+
+                                MsgBox "Output IE-FAT dan Hydrogenation berhasil ditulis.", vbInformation
+                                Exit Sub
+                            End If
+                        Next
+                    End If
+                End If
+            End If
+        End If
+    Next
+
+    MsgBox "Email atau file tidak ditemukan.", vbExclamation
+End Sub
+
+Function JoinDictionaryKeys(dict As Object) As String
+    Dim key As Variant, result As String
+    For Each key In dict.Keys
+        result = result & IIf(result <> "", ", ", "") & key
+    Next
+    JoinDictionaryKeys = result
+End Function
+
+
