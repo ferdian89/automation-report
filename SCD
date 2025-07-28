@@ -1,37 +1,31 @@
-Sub GetO136FromEmail_Ferry_ToTodaySheet()
+Sub GetSCDPlant_OutputPerRow()
 
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
-    Dim xlApp As Object, xlWb As Object, xlWs As Object, sh As Object
+    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
     Dim wsDest As Worksheet
     Dim tempFile As String
-    Dim foundValue As Variant
-    Dim todaySheetName As String
+    Dim productList As String, inputProcessedTotal As Double
     Dim lastRow As Long
-
     Dim targetSender As String
-    Dim targetDate As Date
-    Dim targetAttachment As String
+    Dim targetDate As Date, searchValueDate As Date
+    Dim i As Long, lastDataRow As Long
+    Dim inputCol As Long, maxCol As Long
+    Dim foundInputCol As Boolean
+    Dim dictProducts As Object
+    Set dictProducts = CreateObject("Scripting.Dictionary")
 
-    ' Parameter pencarian
+    ' Parameter
     targetSender = "Ferry Hermansyah Lubis"
     targetDate = DateSerial(2025, 7, 24)
-    targetAttachment = "02.Daily Report SCD  Hydro Plant (HO) Juli 2025.xlsx"
-    todaySheetName = CStr(Day(Date))
+    searchValueDate = DateSerial(2025, 7, 22)
 
-    ' Buat atau ambil sheet tujuan
-    On Error Resume Next
-    Set wsDest = ThisWorkbook.Sheets(todaySheetName)
-    If wsDest Is Nothing Then
-        Set wsDest = ThisWorkbook.Sheets.Add
-        wsDest.Name = todaySheetName
-    End If
-    On Error GoTo 0
+    Set wsDest = ThisWorkbook.ActiveSheet
 
-    ' Siapkan Outlook
+    ' Buka Outlook dan cari email
     Set olApp = GetObject(, "Outlook.Application")
     Set olNs = olApp.GetNamespace("MAPI")
-    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olFolder = olNs.GetDefaultFolder(6)
     Set olItems = olFolder.Items
     olItems.Sort "ReceivedTime", True
 
@@ -41,46 +35,74 @@ Sub GetO136FromEmail_Ferry_ToTodaySheet()
                 If InStr(1, olMail.SenderName, targetSender, vbTextCompare) > 0 Then
                     If olMail.Attachments.Count > 0 Then
                         For Each olAtmt In olMail.Attachments
-                            If StrComp(olAtmt.fileName, targetAttachment, vbTextCompare) = 0 Then
+                            If InStr(1, olAtmt.Filename, "02.Daily Report SCD  Hydro Plant (HO) Juli 2025.xlsx", vbTextCompare) > 0 Then
 
-                                ' Simpan attachment sementara
-                                tempFile = Environ("TEMP") & "\" & olAtmt.fileName
+                                tempFile = Environ("TEMP") & "\" & olAtmt.Filename
                                 On Error Resume Next: Kill tempFile: On Error GoTo 0
                                 olAtmt.SaveAsFile tempFile
 
-                                ' Buka Excel dan baca O136 dari sheet SCD
                                 Set xlApp = CreateObject("Excel.Application")
                                 xlApp.Visible = False
                                 Set xlWb = xlApp.Workbooks.Open(tempFile, ReadOnly:=True)
 
-                                Set xlWs = Nothing
-                                For Each sh In xlWb.Sheets
-                                    If LCase(Replace(Trim(sh.Name), " ", "")) Like "scd" Then
-                                        Set xlWs = sh
+                                For Each xlWs In xlWb.Sheets
+                                    If LCase(xlWs.Name) Like "*scd*" Then
+                                        lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).Row
+                                        maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
+
+                                        ' Cari kolom Input Processed (merged) dengan row 9 dan row 10 = Kg
+                                        For i = 1 To maxCol
+                                            If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
+                                               LCase(Trim(xlWs.Cells(10, i).Value)) = "kg" Then
+                                                inputCol = i
+                                                foundInputCol = True
+                                                Exit For
+                                            End If
+                                        Next i
+
+                                        If foundInputCol Then
+                                            For i = 1 To lastDataRow
+                                                If IsDate(xlWs.Cells(i, 1).Value) Then
+                                                    If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
+                                                        Dim prod As String
+                                                        prod = Trim(xlWs.Cells(i, 2).Value)
+                                                        If prod <> "" And Not dictProducts.exists(prod) Then
+                                                            dictProducts.Add prod, True
+                                                        End If
+
+                                                        If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
+                                                            inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
+                                                        End If
+                                                    End If
+                                                End If
+                                            Next i
+                                        End If
+
                                         Exit For
                                     End If
-                                Next
-
-                                If Not xlWs Is Nothing Then
-                                    foundValue = xlWs.Range("O136").Value
-                                Else
-                                    foundValue = "Sheet 'SCD' not found"
-                                End If
+                                Next xlWs
 
                                 xlWb.Close False
                                 xlApp.Quit
-                                Set xlApp = Nothing
+                                Set xlApp = Nothing: Set xlWb = Nothing
 
-                                ' Tulis hasil ke sheet tujuan
-                                lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 1
-                                wsDest.Cells(lastRow, 1).Value = olAtmt.fileName
-                                If IsNumeric(foundValue) Then
-                                    wsDest.Cells(lastRow, 2).Value = foundValue
-                                Else
-                                    wsDest.Cells(lastRow, 2).Value = "Bukan angka atau tidak ditemukan"
-                                End If
+                                ' Siapkan isi
+                                Dim joinedProducts As String, key As Variant
+                                For Each key In dictProducts.Keys
+                                    If joinedProducts = "" Then
+                                        joinedProducts = key
+                                    Else
+                                        joinedProducts = joinedProducts & ", " & key
+                                    End If
+                                Next key
 
-                                MsgBox "Selesai. Nilai O136: " & foundValue, vbInformation
+                                ' Cari baris kosong berikutnya
+                                lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 2
+                                wsDest.Cells(lastRow, 1).Value = "SCD Plant"
+                                wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
+                                wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal, "#,##0.00")
+
+                                MsgBox "Output berhasil ditulis ke worksheet.", vbInformation
                                 Exit Sub
                             End If
                         Next
@@ -90,6 +112,8 @@ Sub GetO136FromEmail_Ferry_ToTodaySheet()
         End If
     Next
 
-    MsgBox "Email dengan kriteria tidak ditemukan.", vbExclamation
+    MsgBox "Email atau data tidak ditemukan.", vbExclamation
 
 End Sub
+
+
