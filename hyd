@@ -12,14 +12,16 @@ Sub GetHydrogenationPlant_OutputFinal()
     Dim foundInputCol As Boolean, foundProdCol As Boolean
     Dim inputProcessedTotal As Double
     Dim dictProducts As Object, dictDescriptions As Object
-    Dim prod As String, desc1 As String, desc2 As String, descCombined As String, key As Variant
+    Dim prod As String, descText As String, key As Variant
     Dim joinedProducts As String, joinedDescriptions As String
-    Dim descColBO As Long, descColAY As Long
+    Dim descColAY As Long
 
     ' Parameter
     targetSender = "Ferry Hermansyah Lubis"
     targetDate = DateSerial(2025, 7, 24)
-    searchValueDate = DateSerial(2025, 7, 15)  ' Ganti sesuai kebutuhan
+    searchValueDate = DateSerial(2025, 7, 15)
+
+    descColAY = 51 ' AY = kolom Description
 
     Set dictProducts = CreateObject("Scripting.Dictionary")
     Set dictDescriptions = CreateObject("Scripting.Dictionary")
@@ -53,9 +55,7 @@ Sub GetHydrogenationPlant_OutputFinal()
                                         lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).Row
                                         maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
 
-                                        descColBO = 67 ' Kolom BO
-                                        descColAY = 51 ' Kolom AY
-
+                                        ' Cari kolom Product dan Input Processed
                                         For i = 1 To maxCol
                                             If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Product" And _
                                                Trim(xlWs.Cells(10, i).Value) = "Hydrogenated" Then
@@ -88,22 +88,11 @@ Sub GetHydrogenationPlant_OutputFinal()
                                                             End If
                                                         End If
 
-                                                        desc1 = Trim(xlWs.Cells(i, descColBO).Value)
-                                                        desc2 = Trim(xlWs.Cells(i, descColAY).Value)
-                                                        descCombined = ""
-
-                                                        If desc1 <> "" Then descCombined = desc1
-                                                        If desc2 <> "" Then
-                                                            If descCombined <> "" Then
-                                                                descCombined = descCombined & ", " & desc2
-                                                            Else
-                                                                descCombined = desc2
-                                                            End If
-                                                        End If
-
-                                                        If descCombined <> "" Then
-                                                            If Not dictDescriptions.exists(descCombined) Then
-                                                                dictDescriptions.Add descCombined, True
+                                                        ' Ambil Description dari kolom AY
+                                                        descText = Trim(xlWs.Cells(i, descColAY).Value2)
+                                                        If descText <> "" Then
+                                                            If Not dictDescriptions.exists(descText) Then
+                                                                dictDescriptions.Add descText, True
                                                             End If
                                                         End If
                                                     End If
@@ -119,6 +108,7 @@ Sub GetHydrogenationPlant_OutputFinal()
                                 xlApp.Quit
                                 Set xlApp = Nothing: Set xlWb = Nothing
 
+                                ' Gabung hasil
                                 For Each key In dictProducts.Keys
                                     If joinedProducts = "" Then
                                         joinedProducts = key
@@ -135,8 +125,9 @@ Sub GetHydrogenationPlant_OutputFinal()
                                     End If
                                 Next key
 
+                                ' Output ke worksheet
                                 lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 2
-                                wsDest.Cells(lastRow, 1).Value = "Hydrogenation Plant"
+                                wsDest.Cells(lastRow, 1).Value = "HYD Plant"
                                 wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
                                 If inputProcessedTotal > 0 Then
                                     wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
@@ -148,7 +139,7 @@ Sub GetHydrogenationPlant_OutputFinal()
                                 If joinedDescriptions <> "" Then
                                     Dim descRow As Long
                                     descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-                                    wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
+                                    wsDest.Cells(descRow, 1).Value = joinedDescriptions
                                 End If
 
                                 MsgBox "Output Hydrogenation berhasil ditulis.", vbInformation
