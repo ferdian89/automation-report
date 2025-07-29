@@ -1,33 +1,107 @@
 Sub GenerateCombinedRefineryPTRReport()
     Dim refFilePath As String, ptrFilePath As String
-    Dim sheetName As String, todayDay As Integer
-    Dim wsTarget As Worksheet, currentRow As Long
+    Dim refFileName As String, ptrFileName As String
+    Dim fileTargetPath As String
+    Dim saveFolder As String
+    Dim sheetName As String
+    Dim todayDay As Integer
+    Dim todayDate As Date
+    Dim currentRow As Long
 
+    ' Deklarasi untuk Outlook
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+
+    ' Deklarasi untuk Excel target
+    Dim appExcel As Object
+    Dim wbTarget As Object
+    Dim wsTarget As Worksheet
+
+    ' Flag status file ditemukan
+    Dim refFound As Boolean, ptrFound As Boolean
+    Dim i As Long
+
+    ' ========================
+    ' Persiapan variabel awal
+    ' ========================
+    todayDate = Date
     todayDay = Day(Date - 1)
     sheetName = CStr(todayDay)
-    refFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
-    ptrFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Pre-Treatment Production Report Juli 2025  (HO) Flowmeter.xlsx"
+    saveFolder = Environ("TEMP") & "\"
 
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-
-
-    ' Lokasi file output akhir
+    refFileName = "Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
+    ptrFileName = "Pre-Treatment Production Report Juli 2025  (HO) Flowmeter.xlsx"
     fileTargetPath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Project Daily Report\output\2025\Daily Report Juli 2025.xlsx"
 
-    ' Path sumber file (tidak dipakai lagi karena sudah dari email, tapi tetap didefinisikan kalau perlu backup)
-    refFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
-    ptrFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Pre-Treatment Production Report Juli 2025  (HO) Flowmeter.xlsx"
+    ' =====================
+    ' Ambil file dari email
+    ' =====================
+    Set olApp = GetObject(, "Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
 
+    For i = 1 To olItems.Count
+        Set olMail = olItems.Item(i)
+
+        If olMail.Class = 43 Then ' olMailItem
+            If Int(olMail.ReceivedTime) = todayDate Then
+                ' Cek file dari Dhina Mutia
+                If InStr(1, olMail.SenderName, "Dhina Mutia", vbTextCompare) > 0 And Not refFound Then
+                    For Each olAtmt In olMail.Attachments
+                        If olAtmt.Filename = refFileName Then
+                            olAtmt.SaveAsFile saveFolder & refFileName
+                            refFilePath = saveFolder & refFileName
+                            refFound = True
+                            Exit For
+                        End If
+                    Next olAtmt
+                End If
+
+                ' Cek file dari Hani Wulandari
+                If InStr(1, olMail.SenderName, "Hani Wulandari", vbTextCompare) > 0 And Not ptrFound Then
+                    For Each olAtmt In olMail.Attachments
+                        If olAtmt.Filename = ptrFileName Then
+                            olAtmt.SaveAsFile saveFolder & ptrFileName
+                            ptrFilePath = saveFolder & ptrFileName
+                            ptrFound = True
+                            Exit For
+                        End If
+                    Next olAtmt
+                End If
+            End If
+        End If
+
+        If refFound And ptrFound Then Exit For
+    Next i
+
+    ' ========================
+    ' Konfirmasi hasil download
+    ' ========================
+    If refFound Then
+        MsgBox "? File Refinery ditemukan: " & refFilePath, vbInformation
+    Else
+        MsgBox "? File Refinery dari Dhina Mutia hari ini tidak ditemukan!", vbExclamation
+    End If
+
+    If ptrFound Then
+        MsgBox "? File PTR ditemukan: " & ptrFilePath, vbInformation
+    Else
+        MsgBox "? File PTR dari Hani Wulandari hari ini tidak ditemukan!", vbExclamation
+    End If
+
+    ' =============================
+    ' Buka file output & isi laporan
+    ' =============================
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
-    ' Buka file output
     Set appExcel = CreateObject("Excel.Application")
     appExcel.DisplayAlerts = False
     Set wbTarget = appExcel.Workbooks.Open(fileTargetPath)
 
-    ' Cek apakah sheet untuk tanggal sudah ada
+    ' Buat sheet baru jika belum ada
     On Error Resume Next
     Set wsTarget = wbTarget.Sheets(sheetName)
     On Error GoTo 0
@@ -39,11 +113,9 @@ Sub GenerateCombinedRefineryPTRReport()
         wsTarget.Cells.Clear
     End If
 
-    ' Baris awal penulisan output
-    currentRow = 1
-     
-    On Error GoTo 0
-
+    ' =======================
+    ' Jalankan fungsi gabungan
+    ' =======================
     currentRow = 1
     Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
     Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
@@ -51,14 +123,17 @@ Sub GenerateCombinedRefineryPTRReport()
     Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
     Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
 
-    ' Simpan dan tutup file output
+    ' ======================
+    ' Simpan & tutup hasil
+    ' ======================
     wbTarget.Save
     wbTarget.Close False
     appExcel.Quit
     Set appExcel = Nothing
 
     Application.ScreenUpdating = True
-    MsgBox "Laporan gabungan berhasil dibuat di file dan sheet '" & sheetName & "'", vbInformation
+
+    MsgBox "? Laporan gabungan berhasil dibuat di sheet '" & sheetName & "'", vbInformation
 End Sub
 
 
