@@ -11,14 +11,37 @@ Sub GenerateCombinedRefineryPTRReport()
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
+
+    ' Lokasi file output akhir
+    fileTargetPath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Project Daily Report\output\2025\Daily Report Juli 2025.xlsx"
+
+    ' Path sumber file (tidak dipakai lagi karena sudah dari email, tapi tetap didefinisikan kalau perlu backup)
+    refFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
+    ptrFilePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Pre-Treatment Production Report Juli 2025  (HO) Flowmeter.xlsx"
+
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    ' Buka file output
+    Set appExcel = CreateObject("Excel.Application")
+    appExcel.DisplayAlerts = False
+    Set wbTarget = appExcel.Workbooks.Open(fileTargetPath)
+
+    ' Cek apakah sheet untuk tanggal sudah ada
     On Error Resume Next
-    Set wsTarget = ThisWorkbook.Sheets(sheetName)
+    Set wsTarget = wbTarget.Sheets(sheetName)
+    On Error GoTo 0
+
     If wsTarget Is Nothing Then
-        Set wsTarget = ThisWorkbook.Sheets.Add(After:=Sheets(Sheets.Count))
+        Set wsTarget = wbTarget.Sheets.Add(After:=wbTarget.Sheets(wbTarget.Sheets.Count))
         wsTarget.Name = sheetName
     Else
         wsTarget.Cells.Clear
     End If
+
+    ' Baris awal penulisan output
+    currentRow = 1
+     
     On Error GoTo 0
 
     currentRow = 1
@@ -28,9 +51,16 @@ Sub GenerateCombinedRefineryPTRReport()
     Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
     Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
 
+    ' Simpan dan tutup file output
+    wbTarget.Save
+    wbTarget.Close False
+    appExcel.Quit
+    Set appExcel = Nothing
+
     Application.ScreenUpdating = True
-    MsgBox "Laporan gabungan berhasil dibuat di sheet '" & sheetName & "'", vbInformation
+    MsgBox "Laporan gabungan berhasil dibuat di file dan sheet '" & sheetName & "'", vbInformation
 End Sub
+
 
 ' ------------------ REFINERY & PTR ------------------
 Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
