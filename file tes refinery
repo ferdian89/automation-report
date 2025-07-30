@@ -20,7 +20,7 @@ Sub GenerateCombinedRefineryPTRReport()
 
     ' Persiapan variabel
     todayDate = Date
-    todayDay = Day(Date - 1)
+    todayDay = Day(Date - 2)
     sheetName = CStr(todayDay)
     saveFolder = Environ("TEMP") & "\"
 
@@ -195,11 +195,11 @@ End Sub
 Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
     Dim wb As Workbook, ws As Worksheet
     Dim rbdpoKg As Double, oleinKg As Double, stearinKg As Double
-    Dim steamVal As Variant, electVal As Variant, waterVal As Variant, downtimeText As String
+    Dim weightedSteam As Double, weightedElectricity As Double, weightedWater As Double
+    Dim downtimeText As String
     Dim i As Long, lastRow As Long
     Dim cell As Range, mergeVal As Variant
     Dim matchingRows As Collection, r As Variant
-    Dim firstMatchRow As Long
 
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
@@ -222,24 +222,22 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
         Exit Sub
     End If
 
-' Ambil data numerik utama
-For Each r In matchingRows
-    rbdpoKg = rbdpoKg + GetCellVal(ws, CLng(r), "rbdpo input", "kg", 8, 9)
-    oleinKg = oleinKg + GetCellVal(ws, CLng(r), "rbdol output", "kg", 8, 9)
-    stearinKg = stearinKg + GetCellVal(ws, CLng(r), "rbdst output", "kg", 8, 9)
-    
-    ' Ambil hanya satu kali teks downtime
-    If downtimeText = "" Then
-        downtimeText = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
-    End If
-Next r
+    ' Ambil data numerik utama dan kalkulasi tertimbang
+    For Each r In matchingRows
+        Dim inputRBDPO As Double
+        inputRBDPO = GetCellVal(ws, CLng(r), "rbdpo input", "kg", 8, 9)
+        rbdpoKg = rbdpoKg + inputRBDPO
+        oleinKg = oleinKg + GetCellVal(ws, CLng(r), "rbdol output", "kg", 8, 9)
+        stearinKg = stearinKg + GetCellVal(ws, CLng(r), "rbdst output", "kg", 8, 9)
 
-' Ambil data steam, electricity, water dari baris terakhir
-firstMatchRow = CLng(matchingRows(matchingRows.Count))
-steamVal = GetCellVal(ws, firstMatchRow, "steam", "kg/mt", 8, 9)
-electVal = GetCellVal(ws, firstMatchRow, "electricity", "kwh/mt", 8, 9)
-waterVal = GetCellVal(ws, firstMatchRow, "water", "m3/mt", 8, 9)
+        weightedSteam = weightedSteam + inputRBDPO * GetCellVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
+        weightedElectricity = weightedElectricity + inputRBDPO * GetCellVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
+        weightedWater = weightedWater + inputRBDPO * GetCellVal(ws, CLng(r), "water", "m3/mt", 8, 9)
 
+        If downtimeText = "" Then
+            downtimeText = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+        End If
+    Next r
 
     wb.Close False
 
@@ -249,15 +247,23 @@ waterVal = GetCellVal(ws, firstMatchRow, "water", "m3/mt", 8, 9)
         .Cells(row, 1).Value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
         .Cells(row, 1).Value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
         .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
-        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/MT": row = row + 1
-        .Cells(row, 1).Value = "Elect : " & Format(electVal, "0.00") & " kwh/MT": row = row + 1
-        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.00") & " m3/MT RBDPO": row = row + 1
+        If rbdpoKg > 0 Then
+            .Cells(row, 1).Value = "Steam : " & Format(weightedSteam / rbdpoKg, "0.00") & " kg/MT": row = row + 1
+            .Cells(row, 1).Value = "Elect : " & Format(weightedElectricity / rbdpoKg, "0.00") & " kwh/MT": row = row + 1
+            .Cells(row, 1).Value = "Water : " & Format(weightedWater / rbdpoKg, "0.00") & " m3/MT RBDPO": row = row + 1
+        Else
+            .Cells(row, 1).Value = "Steam : 0": row = row + 1
+            .Cells(row, 1).Value = "Elect : 0": row = row + 1
+            .Cells(row, 1).Value = "Water : 0": row = row + 1
+        End If
         If downtimeText <> "" Then
             .Cells(row, 1).Value = downtimeText: row = row + 1
         End If
         row = row + 1
     End With
 End Sub
+
+
 
 ' ------------------ UTIL ------------------
 Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
