@@ -6,7 +6,7 @@ Sub GenerateFractinationPTRReport()
     Dim currentRow As Long
     
 
-    todayDay = Day(Date - 1)
+    todayDay = Day(Date - 2)
     sheetName = CStr(todayDay)
     
     filePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
@@ -40,16 +40,16 @@ Private Sub GenerateFractinationReport(ByVal filePath As String, ByVal sheetSour
     Dim i As Long, lastRow As Long
     Dim cell As Range, mergeVal As Variant
     Dim rbdpoKg As Double, oleinKg As Double, stearinKg As Double
-    Dim steamVal As Variant, electVal As Variant, waterVal As Variant
+    Dim steamVal As String, electVal As String, waterVal As String, downtimeText As String
     Dim matchingRows As Collection
     Dim r As Variant
-    Dim firstMatchRow As Long
-    Dim downtimeText As String
+    Dim rowIndex As Long
+    Dim idx As Long
 
     On Error Resume Next
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     If wb Is Nothing Then
-        wsTarget.Cells(row, 1).value = "FRACTINATION PLANT 1 - Gagal membuka file": row = row + 2
+        wsTarget.Cells(row, 1).Value = "FRACTINATION PLANT 1 - Gagal membuka file": row = row + 2
         Exit Sub
     End If
     On Error GoTo 0
@@ -58,54 +58,73 @@ Private Sub GenerateFractinationReport(ByVal filePath As String, ByVal sheetSour
     Set matchingRows = New Collection
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
 
+    ' Temukan semua baris yang cocok dengan targetDay
     For i = 10 To lastRow
         Set cell = ws.Cells(i, 1)
         If cell.MergeCells Then
-            mergeVal = cell.MergeArea.Cells(1, 1).value
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
         Else
-            mergeVal = cell.value
+            mergeVal = cell.Value
         End If
         If mergeVal = targetDay Then matchingRows.Add i
     Next i
 
     If matchingRows.Count = 0 Then
-        wsTarget.Cells(row, 1).value = "FRACTINATION PLANT 1 - Tanggal " & targetDay & " tidak ditemukan": row = row + 2
+        wsTarget.Cells(row, 1).Value = "FRACTINATION PLANT 1 - Tanggal " & targetDay & " tidak ditemukan": row = row + 2
         wb.Close False
         Exit Sub
     End If
 
-    ' Ambil total dari semua baris yang cocok
+    ' Akumulasi nilai numerik utama
     For Each r In matchingRows
-        rbdpoKg = rbdpoKg + GetCellVal(ws, CLng(r), "rbdpo input", "kg", 8, 9)
-        oleinKg = oleinKg + GetCellVal(ws, CLng(r), "rbdol output", "kg", 8, 9)
-        stearinKg = stearinKg + GetCellVal(ws, CLng(r), "rbdst output", "kg", 8, 9)
+        rowIndex = CLng(r)
+        rbdpoKg = rbdpoKg + GetCellVal(ws, rowIndex, "rbdpo input", "kg", 8, 9)
+        oleinKg = oleinKg + GetCellVal(ws, rowIndex, "rbdol output", "kg", 8, 9)
+        stearinKg = stearinKg + GetCellVal(ws, rowIndex, "rbdst output", "kg", 8, 9)
     Next r
 
-    ' Ambil nilai apa adanya dari baris pertama yang cocok
-    firstMatchRow = CLng(matchingRows(1))
-steamVal = GetTextVal(ws, firstMatchRow, "steam", "kg/mt", 8, 9)
-electVal = GetTextVal(ws, firstMatchRow, "electricity", "kwh/mt", 8, 9)
-waterVal = GetTextVal(ws, firstMatchRow, "water", "m3/mt", 8, 9)
-downtimeText = GetTextVal(ws, firstMatchRow, "downtime", "keterangan", 8, 9)
+    ' Ambil nilai steam, electric, water, downtime dari baris terbawah yang valid
+    For idx = matchingRows.Count To 1 Step -1
+        rowIndex = CLng(matchingRows(idx))
+
+        If steamVal = "" Or steamVal = "-" Then
+            steamVal = GetTextVal(ws, rowIndex, "steam", "kg/mt", 8, 9)
+        End If
+        If electVal = "" Or electVal = "-" Then
+            electVal = GetTextVal(ws, rowIndex, "electricity", "kwh/mt", 8, 9)
+        End If
+        If waterVal = "" Or waterVal = "-" Then
+            waterVal = GetTextVal(ws, rowIndex, "water", "m3/mt", 8, 9)
+        End If
+        If downtimeText = "" Or downtimeText = "-" Then
+            downtimeText = GetTextVal(ws, rowIndex, "downtime", "keterangan", 8, 9)
+        End If
+
+        If steamVal <> "" And steamVal <> "-" And _
+           electVal <> "" And electVal <> "-" And _
+           waterVal <> "" And waterVal <> "-" And _
+           downtimeText <> "" And downtimeText <> "-" Then Exit For
+    Next idx
 
     wb.Close False
 
     ' Output hasil
     With wsTarget
-        .Cells(row, 1).value = "FRACTINATION PLANT 1": row = row + 1
-        .Cells(row, 1).value = "Quantity": row = row + 1
-        .Cells(row, 1).value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
-        .Cells(row, 1).value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
-        .Cells(row, 1).value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
-        .Cells(row, 1).value = "Steam : " & Format(steamVal, "0.00") & " kg/MT": row = row + 1
-        .Cells(row, 1).value = "Elect : " & Format(electVal, "0.00") & " kwh/MT": row = row + 1
-        .Cells(row, 1).value = "Water : " & Format(waterVal, "0.00") & " m3/MT RBDPO": row = row + 1
-              If downtimeText <> "" Then
-            .Cells(row, 1).value = downtimeText: row = row + 1
+        .Cells(row, 1).Value = "FRACTINATION PLANT 1": row = row + 1
+        .Cells(row, 1).Value = "Quantity": row = row + 1
+        .Cells(row, 1).Value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+        .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/MT": row = row + 1
+        .Cells(row, 1).Value = "Elect : " & Format(electVal, "0.00") & " kwh/MT": row = row + 1
+        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.00") & " m3/MT RBDPO": row = row + 1
+        If downtimeText <> "" And downtimeText <> "-" Then
+            .Cells(row, 1).Value = downtimeText: row = row + 1
         End If
         row = row + 1
     End With
 End Sub
+
 
 
 Private Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
@@ -115,10 +134,10 @@ Private Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Te
     lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
 
     For col = 2 To lastCol
-        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).value))
-        h2 = LCase(Trim(ws.Cells(h2Row, col).value))
+        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
         If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
-            GetCellVal = val(ws.Cells(row, col).value)
+            GetCellVal = Val(ws.Cells(row, col).Value)
             Exit Function
         End If
     Next col
@@ -133,8 +152,8 @@ Private Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Te
     lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
 
     For col = 2 To lastCol
-        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).value))
-        h2 = LCase(Trim(ws.Cells(h2Row, col).value))
+        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
         If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
             GetTextVal = Trim(ws.Cells(row, col).Text) ' .Text = tampilkan persis dari sheet
             Exit Function
@@ -143,3 +162,4 @@ Private Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Te
 
     GetTextVal = "-"
 End Function
+
