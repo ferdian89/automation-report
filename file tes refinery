@@ -409,9 +409,6 @@ Next i
 End Sub
 
 
-
-
-
 ' ------------------ UTIL ------------------
 Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
     Dim lastCol As Long, col As Long, h1 As String, h2 As String
