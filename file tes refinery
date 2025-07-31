@@ -20,8 +20,8 @@ Sub GenerateCombinedRefineryPTRReport()
     Dim i As Long
 
     ' Persiapan variabel
-    todayDate = Date - 1
-    todayDay = Day(Date - 2)
+    todayDate = Date
+    todayDay = Day(Date - 1)
     sheetName = CStr(todayDay)
     saveFolder = Environ("TEMP") & "\"
 
@@ -106,8 +106,9 @@ Sub GenerateCombinedRefineryPTRReport()
     Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
     Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
     Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsTarget, currentRow, todayDay)
-    Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
+        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
     Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
+    
 
     Application.ScreenUpdating = True
     MsgBox "? Laporan gabungan berhasil dibuat di sheet aktif (" & wsTarget.Name & ")", vbInformation
@@ -132,17 +133,53 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
 
-    Set matchingRows = New Collection
+
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    
+
+    Set matchingRows = New Collection
+    
+    Dim isEndOfMonth As Boolean
+    
+    Dim isStartOfMonth As Boolean
+    
+    Set matchingRows = New Collection
+    
+    isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+    isStartOfMonth = (Day(Date) = 1)
+    
     For i = 10 To lastRow
-        Set cell = ws.Cells(i, 1)
-        If cell.MergeCells Then
-            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        If ws.Cells(i, 1).MergeCells Then
+            mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
         Else
-            mergeVal = cell.Value
+            mergeVal = ws.Cells(i, 1).Value
         End If
-        If mergeVal = targetDay Then matchingRows.Add i
+    
+        If mergeVal = targetDay Then
+            If isEndOfMonth Then
+                If i >= 150 Then
+                    Debug.Print "? Akhir bulan, ambil baris >=150: " & i
+                    matchingRows.Add i
+                Else
+                    Debug.Print "? Akhir bulan, skip baris <150: " & i
+                End If
+            ElseIf isStartOfMonth Then
+                If i <= 150 Then
+                    Debug.Print "? Awal bulan, ambil baris <=150: " & i
+                    matchingRows.Add i
+                Else
+                    Debug.Print "? Awal bulan, skip baris >150: " & i
+                End If
+            Else
+                Debug.Print "? Tengah bulan, ambil semua baris: " & i
+                matchingRows.Add i
+            End If
+        End If
     Next i
+' Debugging: Tampilkan baris yang cocok di Immediate Window
+For Each r In matchingRows
+    Debug.Print "Matching baris: " & r
+Next r
 
     If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
@@ -245,15 +282,45 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
     Set matchingRows = New Collection
 
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
-    For i = 10 To lastRow
-        Set cell = ws.Cells(i, 1)
-        If cell.MergeCells Then
-            mergeVal = cell.MergeArea.Cells(1, 1).Value
+Dim isEndOfMonth As Boolean
+Dim isStartOfMonth As Boolean
+
+
+
+
+
+isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+isStartOfMonth = (Day(Date) = 1)
+
+For i = 10 To lastRow
+    If ws.Cells(i, 1).MergeCells Then
+        mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
+    Else
+        mergeVal = ws.Cells(i, 1).Value
+    End If
+
+    If mergeVal = targetDay Then
+        If isEndOfMonth Then
+            If i >= 150 Then
+                Debug.Print "? Akhir bulan, ambil baris >=150: " & i
+                matchingRows.Add i
+            Else
+                Debug.Print "? Akhir bulan, skip baris <150: " & i
+            End If
+        ElseIf isStartOfMonth Then
+            If i <= 150 Then
+                Debug.Print "? Awal bulan, ambil baris <=150: " & i
+                matchingRows.Add i
+            Else
+                Debug.Print "? Awal bulan, skip baris >150: " & i
+            End If
         Else
-            mergeVal = cell.Value
+            Debug.Print "? Tengah bulan, ambil semua baris: " & i
+            matchingRows.Add i
         End If
-        If mergeVal = targetDay Then matchingRows.Add i
-    Next i
+    End If
+Next i
+
 
     If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
@@ -340,6 +407,7 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
     End With
     wb.Close SaveChanges:=False
 End Sub
+
 
 
 
