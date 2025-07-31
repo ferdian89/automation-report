@@ -21,7 +21,7 @@ Sub GenerateCombinedRefineryPTRReport()
 
     ' Persiapan variabel
     todayDate = Date - 1
-    todayDay = Day(Date - 3)
+    todayDay = Day(Date - 2)
     sheetName = CStr(todayDay)
     saveFolder = Environ("TEMP") & "\"
 
@@ -165,8 +165,10 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
         weightedRBDPOCol = weightedRBDPOCol + rowCPO * GetCellVal(ws, CLng(r), "rbd output", "col", 8, 9)
         weightedPFADPurity = weightedPFADPurity + rowCPO * GetCellVal(ws, CLng(r), "pfad output", "%ffa", 8, 9)
 
-        If downtimeText = "" Then
-            downtimeText = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+        Dim currentDT As String
+        currentDT = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+        If Trim(currentDT) <> "" Then
+            downtimeText = downtimeText & vbCrLf & currentDT
         End If
     Next r
 
@@ -200,9 +202,30 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
         .Cells(row, 1).Value = "RBDPO FFA : " & Format(weightedRBDPOFFA / totalCPOKg, "0.00") & " %": row = row + 1
         .Cells(row, 1).Value = "Color RBDPO : " & Format(weightedRBDPOCol / totalCPOKg, "0.0"): row = row + 1
         .Cells(row, 1).Value = "PFAD purity : " & Format(weightedPFADPurity / totalCPOKg, "0.00") & " %": row = row + 1
-        If downtimeText <> "" Then
-            .Cells(row, 1).Value = downtimeText: row = row + 1
+    ' Gabungkan downtimeText dalam satu baris, tanpa label "Downtime:"
+    If downtimeText <> "" Then
+        Dim arr() As String: arr = Split(downtimeText, vbCrLf)
+        Dim combinedText As String
+        combinedText = ""
+
+        For i = 0 To UBound(arr)
+            Dim cleaned As String
+            cleaned = Trim(arr(i))
+
+            If cleaned <> "" And cleaned <> "0" And cleaned <> "- 0" Then
+                If combinedText <> "" Then
+                    combinedText = combinedText & ", " & cleaned
+                Else
+                    combinedText = cleaned
+                End If
+            End If
+        Next i
+
+        If combinedText <> "" Then
+            .Cells(row, 1).Value = combinedText
+            row = row + 1
         End If
+    End If
         row = row + 1
     End With
         row = row + 1
