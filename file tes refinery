@@ -14,7 +14,6 @@ Sub GenerateCombinedRefineryPTRReport()
     ' Worksheet aktif
     Dim wsTarget As Worksheet
 
-
     ' Status file
     Dim refFound As Boolean, ptrFound As Boolean
     Dim i As Long
@@ -25,8 +24,8 @@ Sub GenerateCombinedRefineryPTRReport()
     sheetName = CStr(todayDay)
     saveFolder = Environ("TEMP") & "\"
 
-    refFileName = "Refinery and Fractination Production Report Juli 2025  (HO) Flowmeter.xlsx"
-    ptrFileName = "Pre-Treatment Production Report Juli 2025  (HO) Flowmeter.xlsx"
+    refFileName = "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx"
+    ptrFileName = "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx"
 
     ' Ambil file dari email
     Set olApp = GetObject(, "Outlook.Application")
@@ -35,14 +34,16 @@ Sub GenerateCombinedRefineryPTRReport()
     Set olItems = olFolder.Items
     olItems.Sort "[ReceivedTime]", True
 
-    For i = 1 To olItems.Count
-        Set olMail = olItems.Item(i)
-
+    For Each olMail In olItems
         If olMail.Class = 43 Then
             If Int(olMail.ReceivedTime) = todayDate Then
-                If InStr(1, olMail.SenderName, "Dhina Mutia", vbTextCompare) > 0 And Not refFound Then
+
+                ' Cek pengirim Refinery
+                If (InStr(1, olMail.senderName, "Nora Yohana Panjaitan", vbTextCompare) > 0 Or _
+                    InStr(1, olMail.senderName, "Dhina Mutia", vbTextCompare) > 0) And Not refFound Then
+
                     For Each olAtmt In olMail.Attachments
-                        If olAtmt.Filename = refFileName Then
+                        If olAtmt.fileName = refFileName Then
                             olAtmt.SaveAsFile saveFolder & refFileName
                             refFilePath = saveFolder & refFileName
                             refFound = True
@@ -51,9 +52,12 @@ Sub GenerateCombinedRefineryPTRReport()
                     Next olAtmt
                 End If
 
-                If InStr(1, olMail.SenderName, "Hani Wulandari", vbTextCompare) > 0 And Not ptrFound Then
+                ' Cek pengirim PTR
+                If (InStr(1, olMail.senderName, "Hani Wulandari", vbTextCompare) > 0 Or _
+                    InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0) And Not ptrFound Then
+
                     For Each olAtmt In olMail.Attachments
-                        If olAtmt.Filename = ptrFileName Then
+                        If olAtmt.fileName = ptrFileName Then
                             olAtmt.SaveAsFile saveFolder & ptrFileName
                             ptrFilePath = saveFolder & ptrFileName
                             ptrFound = True
@@ -65,26 +69,13 @@ Sub GenerateCombinedRefineryPTRReport()
         End If
 
         If refFound And ptrFound Then Exit For
-    Next i
-
-    ' Konfirmasi
-    If refFound Then
-        MsgBox "? File Refinery ditemukan: " & refFilePath, vbInformation
-    Else
-        MsgBox "? File Refinery dari Dhina Mutia hari ini tidak ditemukan!", vbExclamation
-    End If
-
-    If ptrFound Then
-        MsgBox "? File PTR ditemukan: " & ptrFilePath, vbInformation
-    Else
-        MsgBox "? File PTR dari Hani Wulandari hari ini tidak ditemukan!", vbExclamation
-    End If
+    Next olMail
 
     ' Jalankan laporan ke worksheet aktif
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
 
-    ' Hapus sheet dengan nama itu jika sudah ada
+    ' Hapus sheet jika sudah ada
     Dim wsExist As Worksheet
     On Error Resume Next
     Set wsExist = ThisWorkbook.Sheets(sheetName)
@@ -95,24 +86,70 @@ Sub GenerateCombinedRefineryPTRReport()
     End If
     On Error GoTo 0
 
-    ' Tambahkan sheet baru dengan nama tersebut
+    ' Tambahkan sheet baru dan siapkan target
     ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)).Name = sheetName
     Set wsTarget = ThisWorkbook.Sheets(sheetName)
-    
-    ' Bersihkan isi jika perlu
     wsTarget.Cells.Clear
-
     currentRow = 1
-    Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
-    Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
-    Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsTarget, currentRow, todayDay)
+
+    ' Proses Refinery
+    If refFound Then
+        On Error Resume Next
+        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
+        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
+        If Err.Number <> 0 Then
+            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses Refinery"
+            currentRow = currentRow + 2
+            Err.Clear
+        End If
+        On Error GoTo 0
+    Else
+        wsTarget.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan": currentRow = currentRow + 2
+    End If
+
+    ' Proses PTR
+    If ptrFound Then
+        On Error Resume Next
+        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsTarget, currentRow, todayDay)
+        If Err.Number <> 0 Then
+            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses PTR": currentRow = currentRow + 2
+            Err.Clear
+        End If
+        On Error GoTo 0
+    Else
+        wsTarget.Cells(currentRow, 1).Value = "File PTR tidak ditemukan": currentRow = currentRow + 2
+    End If
+
+    ' Proses Fraksinasi
+    If refFound Then
+        On Error Resume Next
         Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
-    Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
-    
+        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
+        If Err.Number <> 0 Then
+            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses Fractination"
+            currentRow = currentRow + 2
+            Err.Clear
+        End If
+        On Error GoTo 0
+    End If
+
+    ' Informasi status file
+    If refFound Then
+        MsgBox "? File Refinery ditemukan: " & refFilePath, vbInformation
+    Else
+        MsgBox "? File Refinery dari Nora/Dhina tidak ditemukan hari ini!", vbExclamation
+    End If
+
+    If ptrFound Then
+        MsgBox "? File PTR ditemukan: " & ptrFilePath, vbInformation
+    Else
+        MsgBox "? File PTR dari Hani/Wendy tidak ditemukan hari ini!", vbExclamation
+    End If
 
     Application.ScreenUpdating = True
     MsgBox "? Laporan gabungan berhasil dibuat di sheet aktif (" & wsTarget.Name & ")", vbInformation
 End Sub
+
 
 
 ' ------------------ REFINERY & PTR ------------------
@@ -162,13 +199,6 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
                     matchingRows.Add i
                 Else
                     Debug.Print "? Akhir bulan, skip baris <150: " & i
-                End If
-            ElseIf isStartOfMonth Then
-                If i <= 150 Then
-                    Debug.Print "? Awal bulan, ambil baris <=150: " & i
-                    matchingRows.Add i
-                Else
-                    Debug.Print "? Awal bulan, skip baris >150: " & i
                 End If
             Else
                 Debug.Print "? Tengah bulan, ambil semua baris: " & i
