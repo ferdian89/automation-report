@@ -31,7 +31,7 @@ Sub GenerateCombinedBIOReport()
     startRow = 1
     
     ' Panggil untuk process BIO
-    GenerateBIOReportPart filePath, "BIO", "BIO", wsTarget, startRow, targetDate
+    GenerateBIOReportPart filePath, "BIO", "BIODIESEL PLANT", wsTarget, startRow, targetDate
     
     MsgBox "? Laporan BIO untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
 End Sub
@@ -162,26 +162,18 @@ If Not IsError(tempVal) And IsNumeric(tempVal) Then
 End If
 
 ' Consumption - Steam
-tempVal = GetCellVal(ws, dataRow, "Fatty Matter", "Flow meter", "", "Kg/Ton Feed")
+tempVal = GetCellVal(ws, dataRow, "Steam", "Flow meter", "", "Kg/Ton Feed")
 If Not IsError(tempVal) And IsNumeric(tempVal) Then
     steamVal = tempVal
 End If
 
 ' Consumption - Electricity
-tempVal = GetCellVal(ws, dataRow, "Fatty Matter", "Flow meter", "", "Kg/Ton Feed")
+tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow meter", "", "Kwh/Ton Feed")
 If Not IsError(tempVal) And IsNumeric(tempVal) Then
     electVal = tempVal
 End If
 
 
-' Loop semua matching rows untuk menjumlahkan Feed
-For Each r In matchingRows
-    val = GetCellVal(ws, CLng(r), "feed", "flow meter", "total", "kg", 4, 7)
-    Debug.Print "Baris: " & r & " | Hasil GetCellVal (feed): " & IIf(IsError(val), "ERROR", val)
-    If Not IsError(val) And IsNumeric(val) Then
-        feedKg = feedKg + CDbl(val)
-    End If
-Next r
 
 Debug.Print "Total feedKg: " & feedKg
 Debug.Print "Total fameKg: " & fameKg
