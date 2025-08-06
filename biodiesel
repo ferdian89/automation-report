@@ -77,17 +77,21 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
     Dim wb As Workbook, ws As Worksheet
     Dim matchingRows As Collection, r As Variant
     Dim lastRow As Long, i As Long
-    Dim mergeVal As Variant, cell As Range
+    Dim cell As Range, mergeVal As Variant
     Dim feedKg As Double, fameKg As Double
     Dim glyKgPerMT As Variant, fattyKgPerMT As Variant
-    Dim methanolVal As Variant, smVal As Variant, steamVal As Variant, electVal As Variant
-    Dim firstMatchRow As Long
+    Dim methanolVal As Variant, smVal As Variant
+    Dim steamVal As Variant, electVal As Variant
+    Dim firstMatchRow As Long, dataRow As Long
+    Dim val As Variant, tempVal As Variant
 
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
     Set matchingRows = New Collection
 
+    ' Cari semua baris yang cocok dengan tanggal
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+
     For i = 10 To lastRow
         Set cell = ws.Cells(i, 1)
         If cell.MergeCells Then
@@ -95,11 +99,10 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
         Else
             mergeVal = cell.Value
         End If
-        
+
         If IsDate(mergeVal) Then
             If CDate(mergeVal) = targetDate Then
                 matchingRows.Add i
-                Debug.Print "MATCHED ROW: " & i & " => " & mergeVal
             End If
         End If
     Next i
@@ -107,54 +110,225 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
     If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
-        wb.Close False: Exit Sub
+        wb.Close False
+        Exit Sub
     End If
 
-    For Each r In matchingRows
-        feedKg = feedKg + GetCellVal(ws, CLng(r), "feed", "total", 9, 10)
-        fameKg = fameKg + GetCellVal(ws, CLng(r), "crude fame", "flow meter", 8, 9)
-        If IsEmpty(glyKgPerMT) Then glyKgPerMT = GetCellVal(ws, CLng(r), "crude glycerine", "kg/ton feed", 8, 9)
-        If IsEmpty(fattyKgPerMT) Then fattyKgPerMT = GetCellVal(ws, CLng(r), "fatty matter", "kg/ton feed", 8, 9)
-    Next r
+ ' Ambil baris pertama yang match tanggal untuk nilai awal
+dataRow = CLng(matchingRows(1))
 
-    firstMatchRow = CLng(matchingRows(matchingRows.Count))
-    methanolVal = GetCellVal(ws, firstMatchRow, "methanol", "kg/ton feed", 8, 9)
-    smVal = GetCellVal(ws, firstMatchRow, "sodium methylate", "kg/ton feed", 8, 9)
-    steamVal = GetCellVal(ws, firstMatchRow, "steam", "kg/ton feed", 8, 9)
-    electVal = GetCellVal(ws, firstMatchRow, "electricity", "kwh/ton feed", 8, 9)
+' Feed
+tempVal = GetCellVal(ws, dataRow, "FEED", "Flow meter", "TOTAL", "Kg")
+If IsNumeric(tempVal) Then
+    feedKg = tempVal
+Else
+    feedKg = 0
+End If
 
-    wb.Close False
+' Fame
+tempVal = GetCellVal(ws, dataRow, "Crude Fame", "Flow Meter", "", "Kg")
+If IsNumeric(tempVal) Then
+    fameKg = tempVal
+Else
+    fameKg = 0
+End If
 
+' Crudegly per MT
+tempVal = GetCellVal(ws, dataRow, "Crude Glycerine", "Flow meter", "", "Kg/Ton Feed")
+If IsNumeric(tempVal) Then
+    glyKgPerMT = tempVal
+Else
+    glyKgPerMT = 0
+End If
+
+' Fatty per MT
+tempVal = GetCellVal(ws, dataRow, "Fatty Matter", "Flow meter", "", "Kg/Ton Feed")
+If IsNumeric(tempVal) Then
+    fattyKgPerMT = tempVal
+Else
+    fattyKgPerMT = 0
+End If
+
+' Consumption - Methanol
+tempVal = GetCellVal(ws, dataRow, "Methanol", "flowmeter", "Kg/Ton Feed", "")
+If Not IsError(tempVal) And IsNumeric(tempVal) Then
+    methanolVal = tempVal
+End If
+
+' Consumption - Sodium Methylate
+tempVal = GetCellVal(ws, dataRow, "Sodium Methylate", "Flow meter", "", "Kg/Ton Feed")
+If Not IsError(tempVal) And IsNumeric(tempVal) Then
+    smVal = tempVal
+End If
+
+' Consumption - Steam
+tempVal = GetCellVal(ws, dataRow, "Fatty Matter", "Flow meter", "", "Kg/Ton Feed")
+If Not IsError(tempVal) And IsNumeric(tempVal) Then
+    steamVal = tempVal
+End If
+
+' Consumption - Electricity
+tempVal = GetCellVal(ws, dataRow, "Fatty Matter", "Flow meter", "", "Kg/Ton Feed")
+If Not IsError(tempVal) And IsNumeric(tempVal) Then
+    electVal = tempVal
+End If
+
+
+' Loop semua matching rows untuk menjumlahkan Feed
+For Each r In matchingRows
+    val = GetCellVal(ws, CLng(r), "feed", "flow meter", "total", "kg", 4, 7)
+    Debug.Print "Baris: " & r & " | Hasil GetCellVal (feed): " & IIf(IsError(val), "ERROR", val)
+    If Not IsError(val) And IsNumeric(val) Then
+        feedKg = feedKg + CDbl(val)
+    End If
+Next r
+
+Debug.Print "Total feedKg: " & feedKg
+Debug.Print "Total fameKg: " & fameKg
+Debug.Print "Gly per MT: " & glyKgPerMT
+Debug.Print "Fatty per MT: " & fattyKgPerMT
+
+
+
+    ' Output ke sheet target
     With wsTarget
         .Cells(row, 1).Value = plantLabel: row = row + 1
         .Cells(row, 1).Value = "Quantity": row = row + 1
         .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
         .Cells(row, 1).Value = "Crude FAME : " & Round(fameKg / 1000, 0) & " MT": row = row + 1
-        .Cells(row, 1).Value = "Crude Glycerin : " & Format(glyKgPerMT, "0.00") & " kg/MT Feed": row = row + 1
-        .Cells(row, 1).Value = "Fatty Matter : " & Format(fattyKgPerMT, "0.00") & " kg/MT Feed": row = row + 1
+
+        If IsNumeric(glyKgPerMT) Then
+            .Cells(row, 1).Value = "Crude Glycerin : " & Format(glyKgPerMT, "0.00") & " kg/MT Feed"
+        Else
+            .Cells(row, 1).Value = "Crude Glycerin : N/A"
+        End If
+        row = row + 1
+
+        If IsNumeric(fattyKgPerMT) Then
+            .Cells(row, 1).Value = "Fatty Matter : " & Format(fattyKgPerMT, "0.00") & " kg/MT Feed"
+        Else
+            .Cells(row, 1).Value = "Fatty Matter : N/A"
+        End If
+        row = row + 1
+
         .Cells(row, 1).Value = "Consumption:": row = row + 1
-        .Cells(row, 1).Value = "Methanol : " & Format(methanolVal, "0.00") & " kg/ton Feed": row = row + 1
-        .Cells(row, 1).Value = "Sodium Methylate : " & Format(smVal, "0.00") & " kg/ton Feed": row = row + 1
-        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/ton Feed": row = row + 1
-        .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.00") & " kWh/ton Feed": row = row + 2
+
+        If IsNumeric(methanolVal) Then
+            .Cells(row, 1).Value = "Methanol : " & Format(methanolVal, "0.00") & " kg/ton Feed"
+        Else
+            .Cells(row, 1).Value = "Methanol : N/A"
+        End If
+        row = row + 1
+
+        If IsNumeric(smVal) Then
+            .Cells(row, 1).Value = "Sodium Methylate : " & Format(smVal, "0.00") & " kg/ton Feed"
+        Else
+            .Cells(row, 1).Value = "Sodium Methylate : N/A"
+        End If
+        row = row + 1
+
+        If IsNumeric(steamVal) Then
+            .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/ton Feed"
+        Else
+            .Cells(row, 1).Value = "Steam : N/A"
+        End If
+        row = row + 1
+
+        If IsNumeric(electVal) Then
+            .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.00") & " kWh/ton Feed"
+        Else
+            .Cells(row, 1).Value = "Electricity : N/A"
+        End If
+        row = row + 2
     End With
 End Sub
 
 
 
-Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
-    Dim lastCol As Long, col As Long, h1 As String, h2 As String
-    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
-    For col = 2 To lastCol
-        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
-        h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
-        If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
-            GetCellVal = Val(ws.Cells(row, col).Value)
+Function GetCellVal(ws As Worksheet, targetRow As Long, _
+                    header1 As String, header2 As String, _
+                    header3 As String, header4 As String, _
+                    Optional headerRow1 As Long = 7, _
+                    Optional headerRow2 As Long = 8, _
+                    Optional headerRow3 As Long = 9, _
+                    Optional headerRow4 As Long = 10) As Double
+
+    Dim col As Long, lastCol As Long
+    Dim val1 As String, val2 As String, val3 As String, val4 As String
+    Dim h1 As String, h2 As String, h3 As String, h4 As String
+
+    On Error GoTo ErrorHandler
+
+    lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+
+    h1 = LCase(Trim(header1))
+    h2 = LCase(Trim(header2))
+    h3 = LCase(Trim(header3))
+    h4 = LCase(Trim(header4))
+
+    For col = 1 To lastCol
+        val1 = LCase(Trim(GetMergedHeaderValue(ws, headerRow1, col)))
+        val2 = LCase(Trim(GetMergedHeaderValue(ws, headerRow2, col)))
+        val3 = LCase(Trim(GetMergedHeaderValue(ws, headerRow3, col)))
+        val4 = LCase(Trim(GetMergedHeaderValue(ws, headerRow4, col)))
+
+        ' Khusus Crude Fame: baris 8 & 9 merge (anggap val2 kosong, hanya gunakan val3)
+        If InStr(val1, "crude fame") > 0 And _
+           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
+            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
+            Exit Function
+        End If
+
+        ' Umum: semua header cocok secara longgar
+        If InStr(val1, h1) > 0 And InStr(val2, h2) > 0 And _
+           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
+            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
             Exit Function
         End If
     Next col
+
+    GetCellVal = 0
+    Exit Function
+
+ErrorHandler:
+    Debug.Print "Hasil GetCellVal: ERROR"
     GetCellVal = 0
 End Function
+
+
+
+
+Function GetMergedHeaderValue(ws As Worksheet, headerRow As Long, col As Long) As String
+    Dim cell As Range
+    Set cell = ws.Cells(headerRow, col)
+
+    ' Jika sel kosong, cek apakah bagian dari merge
+    If IsEmpty(cell.Value) And cell.MergeCells Then
+        GetMergedHeaderValue = cell.MergeArea.Cells(1, 1).Value
+    Else
+        GetMergedHeaderValue = cell.Value
+    End If
+End Function
+
+
+
+
+' Fungsi bantu untuk mengambil nilai header dengan mempertimbangkan merged cells
+Function GetMergedHeader(ws As Worksheet, headerRow As Long, col As Long) As String
+    Dim val As String
+    val = Trim(ws.Cells(headerRow, col).Value)
+    
+    If val = "" Then
+        ' Cari ke atas jika cell kosong karena merged
+        Do While val = "" And headerRow > 1
+            headerRow = headerRow - 1
+            val = Trim(ws.Cells(headerRow, col).Value)
+        Loop
+    End If
+    
+    GetMergedHeader = val
+End Function
+
 
 
 
