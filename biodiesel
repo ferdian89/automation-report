@@ -1,0 +1,194 @@
+Sub GenerateCombinedBIOReport()
+    Dim filePath As String
+    Dim targetDate As Date, targetDay As Integer
+    Dim wsTarget As Worksheet
+    Dim startRow As Long
+
+    ' Tentukan tanggal proses (kemarin)
+    targetDate = Date - 1
+    targetDay = Day(targetDate)
+    
+    ' Ambil file dari email hari ini
+    filePath = GetAttachment_BIO(targetDate)
+    If filePath = "" Then
+        MsgBox "File BIO tidak ditemukan dari email hari ini.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Pastikan sheet output ada
+    On Error Resume Next
+    Set wsTarget = ThisWorkbook.Sheets(Format(targetDate, "dd"))
+    If wsTarget Is Nothing Then
+        Set wsTarget = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsTarget.Name = Format(targetDate, "dd")
+    End If
+    On Error GoTo 0
+    
+    ' Bersihkan area lama
+    wsTarget.Cells.Clear
+    
+    ' Baris mulai output
+    startRow = 1
+    
+    ' Panggil untuk process BIO
+    GenerateBIOReportPart filePath, "BIO", "BIO", wsTarget, startRow, targetDate
+    
+    MsgBox "? Laporan BIO untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
+End Sub
+
+
+Function GetAttachment_BIO(targetDate As Date) As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim baseName As String, savePath As String
+    Dim i As Long
+    
+    baseName = "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx"
+    savePath = Environ("TEMP") & "\BIO_" & Format(Date, "yyyymmdd") & ".xlsx"
+    
+    Set olApp = CreateObject("Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6)
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
+    
+    For i = 1 To olItems.Count
+        Set olMail = olItems.Item(i)
+        If olMail.Class = 43 Then
+            If Int(olMail.ReceivedTime) = Int(Date) Then
+                If InStr(1, olMail.SenderName, "Hani Wulandari", vbTextCompare) > 0 Or _
+                   InStr(1, olMail.SenderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
+                    For Each olAtmt In olMail.Attachments
+                        If olAtmt.fileName = baseName Then
+                            olAtmt.SaveAsFile savePath
+                            GetAttachment_BIO = savePath
+                            Exit Function
+                        End If
+                    Next olAtmt
+                End If
+            End If
+        End If
+    Next i
+    GetAttachment_BIO = ""
+End Function
+
+
+Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+    Dim wb As Workbook, ws As Worksheet
+    Dim matchingRows As Collection, r As Variant
+    Dim lastRow As Long, i As Long
+    Dim mergeVal As Variant, cell As Range
+    Dim feedKg As Double, fameKg As Double
+    Dim glyKgPerMT As Variant, fattyKgPerMT As Variant
+    Dim methanolVal As Variant, smVal As Variant, steamVal As Variant, electVal As Variant
+    Dim firstMatchRow As Long
+
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+    Set matchingRows = New Collection
+
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    For i = 10 To lastRow
+        Set cell = ws.Cells(i, 1)
+        If cell.MergeCells Then
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = cell.Value
+        End If
+        
+        If IsDate(mergeVal) Then
+            If CDate(mergeVal) = targetDate Then
+                matchingRows.Add i
+                Debug.Print "MATCHED ROW: " & i & " => " & mergeVal
+            End If
+        End If
+    Next i
+
+    If matchingRows.Count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+        row = row + 2
+        wb.Close False: Exit Sub
+    End If
+
+    For Each r In matchingRows
+        feedKg = feedKg + GetCellVal(ws, CLng(r), "feed", "total", 9, 10)
+        fameKg = fameKg + GetCellVal(ws, CLng(r), "crude fame", "flow meter", 8, 9)
+        If IsEmpty(glyKgPerMT) Then glyKgPerMT = GetCellVal(ws, CLng(r), "crude glycerine", "kg/ton feed", 8, 9)
+        If IsEmpty(fattyKgPerMT) Then fattyKgPerMT = GetCellVal(ws, CLng(r), "fatty matter", "kg/ton feed", 8, 9)
+    Next r
+
+    firstMatchRow = CLng(matchingRows(matchingRows.Count))
+    methanolVal = GetCellVal(ws, firstMatchRow, "methanol", "kg/ton feed", 8, 9)
+    smVal = GetCellVal(ws, firstMatchRow, "sodium methylate", "kg/ton feed", 8, 9)
+    steamVal = GetCellVal(ws, firstMatchRow, "steam", "kg/ton feed", 8, 9)
+    electVal = GetCellVal(ws, firstMatchRow, "electricity", "kwh/ton feed", 8, 9)
+
+    wb.Close False
+
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel: row = row + 1
+        .Cells(row, 1).Value = "Quantity": row = row + 1
+        .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Crude FAME : " & Round(fameKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Crude Glycerin : " & Format(glyKgPerMT, "0.00") & " kg/MT Feed": row = row + 1
+        .Cells(row, 1).Value = "Fatty Matter : " & Format(fattyKgPerMT, "0.00") & " kg/MT Feed": row = row + 1
+        .Cells(row, 1).Value = "Consumption:": row = row + 1
+        .Cells(row, 1).Value = "Methanol : " & Format(methanolVal, "0.00") & " kg/ton Feed": row = row + 1
+        .Cells(row, 1).Value = "Sodium Methylate : " & Format(smVal, "0.00") & " kg/ton Feed": row = row + 1
+        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/ton Feed": row = row + 1
+        .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.00") & " kWh/ton Feed": row = row + 2
+    End With
+End Sub
+
+
+
+Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
+    Dim lastCol As Long, col As Long, h1 As String, h2 As String
+    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+    For col = 2 To lastCol
+        h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+        If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+            GetCellVal = Val(ws.Cells(row, col).Value)
+            Exit Function
+        End If
+    Next col
+    GetCellVal = 0
+End Function
+
+
+
+
+Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As Variant) As String
+    Dim headerRow1 As Long: headerRow1 = 8
+    Dim headerRow2 As Long: headerRow2 = 9
+    Dim col As Long
+    Dim i As Long, j As Long
+    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+
+    For col = 1 To lastCol
+        j = 0
+        For i = LBound(headers) To UBound(headers)
+            Dim headerText As String
+            If j Mod 2 = 0 Then
+                headerText = LCase(Trim(ws.Cells(headerRow1, col).Value))
+            Else
+                headerText = LCase(Trim(ws.Cells(headerRow2, col).Value))
+            End If
+
+            If InStr(1, headerText, LCase(headers(i)), vbTextCompare) > 0 Then
+                j = j + 1
+            Else
+                Exit For
+            End If
+        Next i
+
+        If j = UBound(headers) + 1 Then
+            GetTextVal = Trim(ws.Cells(targetRow, col).Value)
+            Exit Function
+        End If
+    Next col
+
+    GetTextVal = "" ' Default jika tidak ketemu
+End Function
+
