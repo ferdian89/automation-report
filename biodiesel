@@ -30,11 +30,15 @@ Sub GenerateCombinedBIOReport()
     ' Baris mulai output
     startRow = 1
     
-    ' Panggil untuk process BIO
-    GenerateBIOReportPart filePath, "BIO", "BIODIESEL PLANT", wsTarget, startRow, targetDate
-    
-    MsgBox "? Laporan BIO untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
+    ' Proses masing-masing sheet dan label output
+    GenerateBIOReportPart filePath, "BIO", "CLARIFICATION PLANT", wsTarget, startRow, targetDate
+    GenerateBIOReportPart filePath, "CLR", "CLARIFICATION PLANT", wsTarget, startRow, targetDate
+    GenerateBIOReportPart filePath, "GLY", "GLYCERINE PLANT 1", wsTarget, startRow, targetDate
+    GenerateBIOReportPart filePath, "GLY2", "GLYCERINE PLANT 2", wsTarget, startRow, targetDate
+
+    MsgBox "? Laporan gabungan BIO untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
 End Sub
+
 
 
 Function GetAttachment_BIO(targetDate As Date) As String
@@ -73,6 +77,127 @@ Function GetAttachment_BIO(targetDate As Date) As String
 End Function
 
 
+Function GetCellVal(ws As Worksheet, targetRow As Long, _
+                    header1 As String, header2 As String, _
+                    header3 As String, header4 As String, _
+                    Optional headerRow1 As Long = 7, _
+                    Optional headerRow2 As Long = 8, _
+                    Optional headerRow3 As Long = 9, _
+                    Optional headerRow4 As Long = 10) As Double
+
+    Dim col As Long, lastCol As Long
+    Dim val1 As String, val2 As String, val3 As String, val4 As String
+    Dim h1 As String, h2 As String, h3 As String, h4 As String
+
+    On Error GoTo ErrorHandler
+
+    lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+
+    h1 = LCase(Trim(header1))
+    h2 = LCase(Trim(header2))
+    h3 = LCase(Trim(header3))
+    h4 = LCase(Trim(header4))
+
+    For col = 1 To lastCol
+        val1 = LCase(Trim(GetMergedHeaderValue(ws, headerRow1, col)))
+        val2 = LCase(Trim(GetMergedHeaderValue(ws, headerRow2, col)))
+        val3 = LCase(Trim(GetMergedHeaderValue(ws, headerRow3, col)))
+        val4 = LCase(Trim(GetMergedHeaderValue(ws, headerRow4, col)))
+
+        ' Khusus Crude Fame: baris 8 & 9 merge (anggap val2 kosong, hanya gunakan val3)
+        If InStr(val1, "crude fame") > 0 And _
+           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
+            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
+            Exit Function
+        End If
+
+        ' Umum: semua header cocok secara longgar
+        If InStr(val1, h1) > 0 And InStr(val2, h2) > 0 And _
+           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
+            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
+            Exit Function
+        End If
+    Next col
+
+    GetCellVal = 0
+    Exit Function
+
+ErrorHandler:
+    Debug.Print "Hasil GetCellVal: ERROR"
+    GetCellVal = 0
+End Function
+
+
+
+
+Function GetMergedHeaderValue(ws As Worksheet, headerRow As Long, col As Long) As String
+    Dim cell As Range
+    Set cell = ws.Cells(headerRow, col)
+
+    ' Jika sel kosong, cek apakah bagian dari merge
+    If IsEmpty(cell.Value) And cell.MergeCells Then
+        GetMergedHeaderValue = cell.MergeArea.Cells(1, 1).Value
+    Else
+        GetMergedHeaderValue = cell.Value
+    End If
+End Function
+
+
+
+
+' Fungsi bantu untuk mengambil nilai header dengan mempertimbangkan merged cells
+Function GetMergedHeader(ws As Worksheet, headerRow As Long, col As Long) As String
+    Dim val As String
+    val = Trim(ws.Cells(headerRow, col).Value)
+    
+    If val = "" Then
+        ' Cari ke atas jika cell kosong karena merged
+        Do While val = "" And headerRow > 1
+            headerRow = headerRow - 1
+            val = Trim(ws.Cells(headerRow, col).Value)
+        Loop
+    End If
+    
+    GetMergedHeader = val
+End Function
+
+
+
+
+
+Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As Variant) As String
+    Dim headerRow1 As Long: headerRow1 = 8
+    Dim headerRow2 As Long: headerRow2 = 9
+    Dim col As Long
+    Dim i As Long, j As Long
+    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+
+    For col = 1 To lastCol
+        j = 0
+        For i = LBound(headers) To UBound(headers)
+            Dim headerText As String
+            If j Mod 2 = 0 Then
+                headerText = LCase(Trim(ws.Cells(headerRow1, col).Value))
+            Else
+                headerText = LCase(Trim(ws.Cells(headerRow2, col).Value))
+            End If
+
+            If InStr(1, headerText, LCase(headers(i)), vbTextCompare) > 0 Then
+                j = j + 1
+            Else
+                Exit For
+            End If
+        Next i
+
+        If j = UBound(headers) + 1 Then
+            GetTextVal = Trim(ws.Cells(targetRow, col).Value)
+            Exit Function
+        End If
+    Next col
+
+    GetTextVal = "" ' Default jika tidak ketemu
+End Function
+
 Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
     Dim wb As Workbook, ws As Worksheet
     Dim matchingRows As Collection, r As Variant
@@ -90,7 +215,7 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
     Set matchingRows = New Collection
 
     ' Cari semua baris yang cocok dengan tanggal
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    lastRow = ws.Cells(ws.rows.Count, "A").End(xlUp).row
 
     For i = 10 To lastRow
         Set cell = ws.Cells(i, 1)
@@ -236,125 +361,94 @@ Debug.Print "Fatty per MT: " & fattyKgPerMT
 End Sub
 
 
+Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+    Dim wb As Workbook, ws As Worksheet
+    Dim dataRow As Long
+    Dim feedKg As Double, fameKg As Double
+    Dim electVal As Double, filterAidVal As Double, waterVal As Double
 
-Function GetCellVal(ws As Worksheet, targetRow As Long, _
-                    header1 As String, header2 As String, _
-                    header3 As String, header4 As String, _
-                    Optional headerRow1 As Long = 7, _
-                    Optional headerRow2 As Long = 8, _
-                    Optional headerRow3 As Long = 9, _
-                    Optional headerRow4 As Long = 10) As Double
+    On Error GoTo ErrHandler
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
 
-    Dim col As Long, lastCol As Long
-    Dim val1 As String, val2 As String, val3 As String, val4 As String
-    Dim h1 As String, h2 As String, h3 As String, h4 As String
-
-    On Error GoTo ErrorHandler
-
-    lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
-
-    h1 = LCase(Trim(header1))
-    h2 = LCase(Trim(header2))
-    h3 = LCase(Trim(header3))
-    h4 = LCase(Trim(header4))
-
-    For col = 1 To lastCol
-        val1 = LCase(Trim(GetMergedHeaderValue(ws, headerRow1, col)))
-        val2 = LCase(Trim(GetMergedHeaderValue(ws, headerRow2, col)))
-        val3 = LCase(Trim(GetMergedHeaderValue(ws, headerRow3, col)))
-        val4 = LCase(Trim(GetMergedHeaderValue(ws, headerRow4, col)))
-
-        ' Khusus Crude Fame: baris 8 & 9 merge (anggap val2 kosong, hanya gunakan val3)
-        If InStr(val1, "crude fame") > 0 And _
-           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
-            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
-            Exit Function
-        End If
-
-        ' Umum: semua header cocok secara longgar
-        If InStr(val1, h1) > 0 And InStr(val2, h2) > 0 And _
-           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
-            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
-            Exit Function
-        End If
-    Next col
-
-    GetCellVal = 0
-    Exit Function
-
-ErrorHandler:
-    Debug.Print "Hasil GetCellVal: ERROR"
-    GetCellVal = 0
-End Function
-
-
-
-
-Function GetMergedHeaderValue(ws As Worksheet, headerRow As Long, col As Long) As String
-    Dim cell As Range
-    Set cell = ws.Cells(headerRow, col)
-
-    ' Jika sel kosong, cek apakah bagian dari merge
-    If IsEmpty(cell.Value) And cell.MergeCells Then
-        GetMergedHeaderValue = cell.MergeArea.Cells(1, 1).Value
-    Else
-        GetMergedHeaderValue = cell.Value
+    dataRow = FindRowByDate(ws, targetDate)
+    If dataRow = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
+        GoTo CleanExit
     End If
-End Function
+
+    feedKg = GetCellVal(ws, dataRow, "Feed", "Flow meter", "", "Kg")
+    fameKg = GetCellVal(ws, dataRow, "FAME", "Flow meter", "", "Kg")
+    electVal = GetCellVal(ws, dataRow, "Electricity", "Flow meter", "", "Kwh/MT Crude FAME")
+    filterAidVal = GetCellVal(ws, dataRow, "Filter Aid", "Flow meter", "", "Kg/MT Crude FAME")
+    waterVal = GetCellVal(ws, dataRow, "Water", "Flow meter", "", "m3/MT Crude FAME")
+
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel: row = row + 1
+        .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "FAME : " & Round(fameKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Elect : " & Format(electVal, "0.0") & " Kwh/MT Crude FAME": row = row + 1
+        .Cells(row, 1).Value = "Filter Aid : " & Format(filterAidVal, "0.0") & " Kg/MT Crude FAME": row = row + 1
+        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.0") & " m3/MT Crude FAME": row = row + 2
+    End With
+
+CleanExit:
+    wb.Close False
+    Exit Sub
+
+ErrHandler:
+    MsgBox "Error in GenerateCLRReport: " & Err.Description
+    Resume CleanExit
+End Sub
 
 
 
+Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+    Dim wb As Workbook, ws As Worksheet
+    Dim dataRow As Long
+    Dim feedKg As Double, refineGly As Double, yellowGly As Double
+    Dim naohVal As Double, steamVal As Double, electVal As Double
+    Dim downtimeVal As String
 
-' Fungsi bantu untuk mengambil nilai header dengan mempertimbangkan merged cells
-Function GetMergedHeader(ws As Worksheet, headerRow As Long, col As Long) As String
-    Dim val As String
-    val = Trim(ws.Cells(headerRow, col).Value)
-    
-    If val = "" Then
-        ' Cari ke atas jika cell kosong karena merged
-        Do While val = "" And headerRow > 1
-            headerRow = headerRow - 1
-            val = Trim(ws.Cells(headerRow, col).Value)
-        Loop
+    On Error GoTo ErrHandler
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+
+    dataRow = FindRowByDate(ws, targetDate)
+    If dataRow = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
+        GoTo CleanExit
     End If
-    
-    GetMergedHeader = val
-End Function
+
+    feedKg = GetCellVal(ws, dataRow, "Feed", "", "", "Ton") * 1000
+    refineGly = GetCellVal(ws, dataRow, "Refine Gly", "", "", "Ton")
+    yellowGly = GetCellVal(ws, dataRow, "Yellow Gly", "", "", "Ton")
+    naohVal = GetCellVal(ws, dataRow, "NaOH", "", "", "Kg/mt")
+    steamVal = GetCellVal(ws, dataRow, "Steam", "", "", "Kg/mt")
+    electVal = GetCellVal(ws, dataRow, "Electric", "", "", "Kwh/mt")
+    downtimeVal = GetTextVal(ws, dataRow, "Downtime") ' Ambil teks langsung
+
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel: row = row + 1
+        .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " Ton": row = row + 1
+        .Cells(row, 1).Value = "Refine Glycerine : " & refineGly & " Ton": row = row + 1
+        .Cells(row, 1).Value = "Yellow Glycerine : " & yellowGly & " Ton": row = row + 1
+        .Cells(row, 1).Value = "NaOH : " & Format(naohVal, "0.00") & " Kg/mt": row = row + 1
+        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "#,##0.00") & " Kg/mt": row = row + 1
+        .Cells(row, 1).Value = "Electric : " & Format(electVal, "#,##0.00") & " Kwh/mt": row = row + 1
+        .Cells(row, 1).Value = "Downtime : " & downtimeVal: row = row + 2
+    End With
+
+CleanExit:
+    wb.Close False
+    Exit Sub
+
+ErrHandler:
+    MsgBox "Error in GenerateGlycerineReport (" & plantLabel & "): " & Err.Description
+    Resume CleanExit
+End Sub
 
 
 
 
-
-Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As Variant) As String
-    Dim headerRow1 As Long: headerRow1 = 8
-    Dim headerRow2 As Long: headerRow2 = 9
-    Dim col As Long
-    Dim i As Long, j As Long
-    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
-
-    For col = 1 To lastCol
-        j = 0
-        For i = LBound(headers) To UBound(headers)
-            Dim headerText As String
-            If j Mod 2 = 0 Then
-                headerText = LCase(Trim(ws.Cells(headerRow1, col).Value))
-            Else
-                headerText = LCase(Trim(ws.Cells(headerRow2, col).Value))
-            End If
-
-            If InStr(1, headerText, LCase(headers(i)), vbTextCompare) > 0 Then
-                j = j + 1
-            Else
-                Exit For
-            End If
-        Next i
-
-        If j = UBound(headers) + 1 Then
-            GetTextVal = Trim(ws.Cells(targetRow, col).Value)
-            Exit Function
-        End If
-    Next col
-
-    GetTextVal = "" ' Default jika tidak ketemu
-End Function
 
