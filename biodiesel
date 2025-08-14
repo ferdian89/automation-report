@@ -5,7 +5,7 @@ Sub GenerateCombinedBIOReport()
     Dim startRow As Long
 
     ' Tentukan tanggal proses (kemarin)
-    targetDate = Date - 1
+    targetDate = Date - 6
     targetDay = Day(targetDate)
     
     ' Ambil file dari email hari ini
@@ -19,7 +19,7 @@ Sub GenerateCombinedBIOReport()
     On Error Resume Next
     Set wsTarget = ThisWorkbook.Sheets(Format(targetDate, "dd"))
     If wsTarget Is Nothing Then
-        Set wsTarget = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        Set wsTarget = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
         wsTarget.Name = Format(targetDate, "dd")
     End If
     On Error GoTo 0
@@ -31,10 +31,11 @@ Sub GenerateCombinedBIOReport()
     startRow = 1
     
     ' Proses masing-masing sheet dan label output
-    GenerateBIOReportPart filePath, "BIO", "CLARIFICATION PLANT", wsTarget, startRow, targetDate
-    GenerateBIOReportPart filePath, "CLR", "CLARIFICATION PLANT", wsTarget, startRow, targetDate
-    GenerateBIOReportPart filePath, "GLY", "GLYCERINE PLANT 1", wsTarget, startRow, targetDate
-    GenerateBIOReportPart filePath, "GLY2", "GLYCERINE PLANT 2", wsTarget, startRow, targetDate
+GenerateBIOReportPart filePath, "BIO", "BIODIESEL PLANT", wsTarget, startRow, targetDate
+GenerateCLRReport filePath, "CLR", "CLARIFICATION PLANT", wsTarget, startRow, targetDate
+GenerateGlycerineReport filePath, "GLY", "GLYCERINE PLANT 1", wsTarget, startRow, targetDate
+GenerateGlycerineReport filePath, "GLY2", "GLYCERINE PLANT 2", wsTarget, startRow, targetDate
+
 
     MsgBox "? Laporan gabungan BIO untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
 End Sub
@@ -56,12 +57,12 @@ Function GetAttachment_BIO(targetDate As Date) As String
     Set olItems = olFolder.Items
     olItems.Sort "[ReceivedTime]", True
     
-    For i = 1 To olItems.Count
+    For i = 1 To olItems.count
         Set olMail = olItems.Item(i)
         If olMail.Class = 43 Then
             If Int(olMail.ReceivedTime) = Int(Date) Then
-                If InStr(1, olMail.SenderName, "Hani Wulandari", vbTextCompare) > 0 Or _
-                   InStr(1, olMail.SenderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
+                If InStr(1, olMail.senderName, "Hani Wulandari", vbTextCompare) > 0 Or _
+                   InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
                     For Each olAtmt In olMail.Attachments
                         If olAtmt.fileName = baseName Then
                             olAtmt.SaveAsFile savePath
@@ -91,7 +92,7 @@ Function GetCellVal(ws As Worksheet, targetRow As Long, _
 
     On Error GoTo ErrorHandler
 
-    lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+    lastCol = ws.Cells(headerRow1, ws.Columns.count).End(xlToLeft).Column
 
     h1 = LCase(Trim(header1))
     h2 = LCase(Trim(header2))
@@ -170,7 +171,7 @@ Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As 
     Dim headerRow2 As Long: headerRow2 = 9
     Dim col As Long
     Dim i As Long, j As Long
-    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.count).End(xlToLeft).Column
 
     For col = 1 To lastCol
         j = 0
@@ -215,7 +216,7 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
     Set matchingRows = New Collection
 
     ' Cari semua baris yang cocok dengan tanggal
-    lastRow = ws.Cells(ws.rows.Count, "A").End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
 
     For i = 10 To lastRow
         Set cell = ws.Cells(i, 1)
@@ -232,7 +233,7 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
         End If
     Next i
 
-    If matchingRows.Count = 0 Then
+    If matchingRows.count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
         wb.Close False
@@ -363,92 +364,201 @@ End Sub
 
 Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
     Dim wb As Workbook, ws As Worksheet
-    Dim dataRow As Long
+    Dim matchingRows As Collection
+    Dim cell As Range, mergeVal As Variant
+    Dim lastRow As Long, i As Long, dataRow As Long
     Dim feedKg As Double, fameKg As Double
-    Dim electVal As Double, filterAidVal As Double, waterVal As Double
-
-    On Error GoTo ErrHandler
+    Dim electVal As Variant, filterAidVal As Variant, waterVal As Variant
+    Dim tempVal As Variant
+    
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
-
-    dataRow = FindRowByDate(ws, targetDate)
-    If dataRow = 0 Then
-        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
-        GoTo CleanExit
+    Set matchingRows = New Collection
+    
+    ' Cari baris dengan tanggal target
+    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
+    For i = 10 To lastRow
+        Set cell = ws.Cells(i, 1)
+        If cell.MergeCells Then
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = cell.Value
+        End If
+        
+        If IsDate(mergeVal) Then
+            If CDate(mergeVal) = targetDate Then
+                matchingRows.Add i
+            End If
+        End If
+    Next i
+    
+    ' Jika tidak ditemukan
+    If matchingRows.count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+        row = row + 2
+        wb.Close False
+        Exit Sub
     End If
-
-    feedKg = GetCellVal(ws, dataRow, "Feed", "Flow meter", "", "Kg")
-    fameKg = GetCellVal(ws, dataRow, "FAME", "Flow meter", "", "Kg")
-    electVal = GetCellVal(ws, dataRow, "Electricity", "Flow meter", "", "Kwh/MT Crude FAME")
-    filterAidVal = GetCellVal(ws, dataRow, "Filter Aid", "Flow meter", "", "Kg/MT Crude FAME")
-    waterVal = GetCellVal(ws, dataRow, "Water", "Flow meter", "", "m3/MT Crude FAME")
-
+    
+    ' Ambil baris pertama yang match
+    dataRow = CLng(matchingRows(1))
+    
+    ' Feed
+    tempVal = GetCellVal(ws, dataRow, "Feed", "Flow meter", "", "Kg")
+    If IsNumeric(tempVal) Then feedKg = tempVal Else feedKg = 0
+    
+    ' FAME
+    tempVal = GetCellVal(ws, dataRow, "FAME ", "Flow meter", "", "Kg")
+    If IsNumeric(tempVal) Then fameKg = tempVal Else fameKg = 0
+    
+    ' Electricity
+    tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow meter", "", "Kwh/MT Crude FAME")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then electVal = tempVal
+    
+    ' Filter Aid
+    tempVal = GetCellVal(ws, dataRow, "Filter Aid", "Flow meter", "", "Kg/MT Crude FAME")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then filterAidVal = tempVal
+    
+    ' Water
+    tempVal = GetCellVal(ws, dataRow, "Water", "Flow meter", "", "m3/MT Crude FAME")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then waterVal = tempVal
+    
+    ' Output
     With wsTarget
         .Cells(row, 1).Value = plantLabel: row = row + 1
         .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
         .Cells(row, 1).Value = "FAME : " & Round(fameKg / 1000, 0) & " MT": row = row + 1
-        .Cells(row, 1).Value = "Elect : " & Format(electVal, "0.0") & " Kwh/MT Crude FAME": row = row + 1
-        .Cells(row, 1).Value = "Filter Aid : " & Format(filterAidVal, "0.0") & " Kg/MT Crude FAME": row = row + 1
-        .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.0") & " m3/MT Crude FAME": row = row + 2
+        
+        If IsNumeric(electVal) Then
+            .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.0") & " Kwh/MT Crude FAME"
+        Else
+            .Cells(row, 1).Value = "Electricity : N/A"
+        End If
+        row = row + 1
+        
+        If IsNumeric(filterAidVal) Then
+            .Cells(row, 1).Value = "Filter Aid : " & Format(filterAidVal, "0.0") & " Kg/MT Crude FAME"
+        Else
+            .Cells(row, 1).Value = "Filter Aid : N/A"
+        End If
+        row = row + 1
+        
+        If IsNumeric(waterVal) Then
+            .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.0") & " m3/MT Crude FAME"
+        Else
+            .Cells(row, 1).Value = "Water : N/A"
+        End If
+        row = row + 2
     End With
-
-CleanExit:
+    
     wb.Close False
-    Exit Sub
-
-ErrHandler:
-    MsgBox "Error in GenerateCLRReport: " & Err.Description
-    Resume CleanExit
 End Sub
+
 
 
 
 Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
     Dim wb As Workbook, ws As Worksheet
-    Dim dataRow As Long
+    Dim matchingRows As Collection
+    Dim cell As Range, mergeVal As Variant
+    Dim lastRow As Long, i As Long, dataRow As Long
     Dim feedKg As Double, refineGly As Double, yellowGly As Double
-    Dim naohVal As Double, steamVal As Double, electVal As Double
+    Dim naohVal As Variant, steamVal As Variant, electVal As Variant
     Dim downtimeVal As String
-
-    On Error GoTo ErrHandler
+    Dim tempVal As Variant
+    
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
-
-    dataRow = FindRowByDate(ws, targetDate)
-    If dataRow = 0 Then
-        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
-        GoTo CleanExit
+    Set matchingRows = New Collection
+    
+    ' Cari baris tanggal target
+    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
+    For i = 10 To lastRow
+        Set cell = ws.Cells(i, 1)
+        If cell.MergeCells Then
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = cell.Value
+        End If
+        
+        If IsDate(mergeVal) Then
+            If CDate(mergeVal) = targetDate Then
+                matchingRows.Add i
+            End If
+        End If
+    Next i
+    
+    ' Jika tidak ditemukan
+    If matchingRows.count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+        row = row + 2
+        wb.Close False
+        Exit Sub
     End If
-
-    feedKg = GetCellVal(ws, dataRow, "Feed", "", "", "Ton") * 1000
-    refineGly = GetCellVal(ws, dataRow, "Refine Gly", "", "", "Ton")
-    yellowGly = GetCellVal(ws, dataRow, "Yellow Gly", "", "", "Ton")
-    naohVal = GetCellVal(ws, dataRow, "NaOH", "", "", "Kg/mt")
-    steamVal = GetCellVal(ws, dataRow, "Steam", "", "", "Kg/mt")
-    electVal = GetCellVal(ws, dataRow, "Electric", "", "", "Kwh/mt")
-    downtimeVal = GetTextVal(ws, dataRow, "Downtime") ' Ambil teks langsung
-
+    
+    ' Ambil baris pertama yang cocok
+    dataRow = CLng(matchingRows(1))
+    
+    ' Feed
+    tempVal = GetCellVal(ws, dataRow, "Feed", "Flow Meter", "", "Kg")
+    If IsNumeric(tempVal) Then feedKg = tempVal * 1000 Else feedKg = 0
+    
+    ' Refine Gly
+    tempVal = GetCellVal(ws, dataRow, "Refined Glycerine", "Flow Meter", "", "kg")
+    If IsNumeric(tempVal) Then refineGly = tempVal Else refineGly = 0
+    
+    ' Yellow Gly
+    tempVal = GetCellVal(ws, dataRow, "Yellow Glycerine", "Flow Meter", "", "Kg")
+    If IsNumeric(tempVal) Then yellowGly = tempVal Else yellowGly = 0
+    
+    ' NaOH
+    tempVal = GetCellVal(ws, dataRow, "NaOH", "Flow Meter", "", "Kg/Ton Feed")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then naohVal = tempVal
+    
+    ' Steam
+    tempVal = GetCellVal(ws, dataRow, "Steam", "Flow Meter", "", "Kg/Ton Feed")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then steamVal = tempVal
+    
+    ' Electric
+    tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow Meter", "", "Kwh/mt")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then electVal = tempVal
+    
+    ' Downtime (teks)
+    downtimeVal = GetTextVal(ws, dataRow, "Downtime")
+    
+    ' Output
     With wsTarget
         .Cells(row, 1).Value = plantLabel: row = row + 1
-        .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " Ton": row = row + 1
-        .Cells(row, 1).Value = "Refine Glycerine : " & refineGly & " Ton": row = row + 1
-        .Cells(row, 1).Value = "Yellow Glycerine : " & yellowGly & " Ton": row = row + 1
-        .Cells(row, 1).Value = "NaOH : " & Format(naohVal, "0.00") & " Kg/mt": row = row + 1
-        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "#,##0.00") & " Kg/mt": row = row + 1
-        .Cells(row, 1).Value = "Electric : " & Format(electVal, "#,##0.00") & " Kwh/mt": row = row + 1
-        .Cells(row, 1).Value = "Downtime : " & downtimeVal: row = row + 2
-    End With
-
-CleanExit:
+      .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+    .Cells(row, 1).Value = "Refine Glycerine : " & Round(refineGly / 1000, 0) & " MT": row = row + 1
+    .Cells(row, 1).Value = "Yellow Glycerine : " & Round(yellowGly / 1000, 0) & " MT": row = row + 1
+        
+ If IsNumeric(naohVal) Then
+        .Cells(row, 1).Value = "NaOH : " & Format(naohVal, "0.00") & " Kg/MT"
+    Else
+        .Cells(row, 1).Value = "NaOH : N/A"
+    End If
+    row = row + 1
+    
+    If IsNumeric(steamVal) Then
+        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "#,##0.00") & " Kg/MT"
+    Else
+        .Cells(row, 1).Value = "Steam : N/A"
+    End If
+    row = row + 1
+    
+    If IsNumeric(electVal) Then
+        .Cells(row, 1).Value = "Electric : " & Format(electVal, "#,##0.00") & " Kwh/MT"
+    Else
+        .Cells(row, 1).Value = "Electric : N/A"
+    End If
+    row = row + 1
+    
+    .Cells(row, 1).Value = "Downtime : " & downtimeVal
+    row = row + 2
+End With
+    
     wb.Close False
-    Exit Sub
-
-ErrHandler:
-    MsgBox "Error in GenerateGlycerineReport (" & plantLabel & "): " & Err.Description
-    Resume CleanExit
 End Sub
-
-
-
 
 
