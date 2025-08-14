@@ -199,6 +199,33 @@ Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As 
     GetTextVal = "" ' Default jika tidak ketemu
 End Function
 
+' ==== Fungsi Cari Baris Tanggal ====
+Function FindMatchingRows(ws As Worksheet, colDate As String, startRow As Long, targetDate As Date) As Collection
+    Dim matchingRows As New Collection
+    Dim lastRow As Long, i As Long
+    Dim cell As Range, mergeVal As Variant
+    
+    lastRow = ws.Cells(ws.Rows.count, colDate).End(xlUp).row
+    
+    For i = startRow To lastRow
+        Set cell = ws.Cells(i, colDate)
+        If cell.MergeCells Then
+            mergeVal = cell.MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = cell.Value
+        End If
+        
+        If IsDate(mergeVal) Then
+            ' Bandingkan hanya tanggalnya (abaikan jam)
+            If Int(CDate(mergeVal)) = targetDate Then
+                matchingRows.Add i
+            End If
+        End If
+    Next i
+    
+    Set FindMatchingRows = matchingRows
+End Function
+
 Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
     Dim wb As Workbook, ws As Worksheet
     Dim matchingRows As Collection, r As Variant
@@ -213,32 +240,15 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
 
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
-    Set matchingRows = New Collection
-
-    ' Cari semua baris yang cocok dengan tanggal
-    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
-
-    For i = 10 To lastRow
-        Set cell = ws.Cells(i, 1)
-        If cell.MergeCells Then
-            mergeVal = cell.MergeArea.Cells(1, 1).Value
-        Else
-            mergeVal = cell.Value
-        End If
-
-        If IsDate(mergeVal) Then
-            If CDate(mergeVal) = targetDate Then
-                matchingRows.Add i
-            End If
-        End If
-    Next i
-
+    ' Cari baris tanggal target
+    Set matchingRows = FindMatchingRows(ws, "A", 10, targetDate)
     If matchingRows.count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
         wb.Close False
         Exit Sub
     End If
+    dataRow = matchingRows(1)
 
  ' Ambil baris pertama yang match tanggal untuk nilai awal
 dataRow = CLng(matchingRows(1))
@@ -469,32 +479,15 @@ Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabe
     
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
-    Set matchingRows = New Collection
-    
     ' Cari baris tanggal target
-    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
-    For i = 10 To lastRow
-        Set cell = ws.Cells(i, 1)
-        If cell.MergeCells Then
-            mergeVal = cell.MergeArea.Cells(1, 1).Value
-        Else
-            mergeVal = cell.Value
-        End If
-        
-        If IsDate(mergeVal) Then
-            If CDate(mergeVal) = targetDate Then
-                matchingRows.Add i
-            End If
-        End If
-    Next i
-    
-    ' Jika tidak ditemukan
+    Set matchingRows = FindMatchingRows(ws, "A", 10, targetDate)
     If matchingRows.count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
         wb.Close False
         Exit Sub
     End If
+    dataRow = matchingRows(1)
     
     ' Ambil baris pertama yang cocok
     dataRow = CLng(matchingRows(1))
@@ -528,8 +521,8 @@ Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabe
     
     ' Output
     With wsTarget
-        .Cells(row, 1).Value = plantLabel: row = row + 1
-      .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+   .Cells(row, 1).Value = plantLabel: row = row + 1
+    .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
     .Cells(row, 1).Value = "Refine Glycerine : " & Round(refineGly / 1000, 0) & " MT": row = row + 1
     .Cells(row, 1).Value = "Yellow Glycerine : " & Round(yellowGly / 1000, 0) & " MT": row = row + 1
         
