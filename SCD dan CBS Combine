@@ -1,0 +1,260 @@
+' ==== Fungsi umum ambil attachment dari email ====
+Function GetAttachmentFromEmail(senderName As String, fileName As String, Optional targetDate As Date) As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim savePath As String
+    
+    If targetDate = 0 Then targetDate = Date - 1
+    savePath = Environ("TEMP") & "\" & fileName
+    
+    Set olApp = GetObject(, "Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "ReceivedTime", True
+    
+    For Each olMail In olItems
+        If TypeName(olMail) = "MailItem" Then
+            If Int(olMail.ReceivedTime) = targetDate Then
+                If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                    For Each olAtmt In olMail.Attachments
+                        If olAtmt.fileName = fileName Then
+                            On Error Resume Next
+                            Kill savePath
+                            On Error GoTo 0
+                            olAtmt.SaveAsFile savePath
+                            Debug.Print "Attachment ditemukan: " & fileName & " dari " & senderName
+                            GetAttachmentFromEmail = savePath
+                            Exit Function
+                        End If
+                    Next
+                End If
+            End If
+        End If
+    Next
+    
+    Debug.Print "Attachment TIDAK ditemukan: " & fileName & " dari " & senderName
+    GetAttachmentFromEmail = ""
+End Function
+
+
+' ==== Fungsi utama ====
+Sub GenerateSCD_CBS_Report()
+    Dim targetDate As Date, sheetName As String
+    Dim wsDest As Worksheet
+    
+    targetDate = Date - 1
+    sheetName = Format(targetDate, "dd-mm-yyyy")
+    Debug.Print "=== GenerateSCD_CBS_Report ==="
+    Debug.Print "Tanggal target: " & sheetName
+    
+    ' Siapkan sheet output
+    On Error Resume Next
+    Set wsDest = ThisWorkbook.Sheets(sheetName)
+    If wsDest Is Nothing Then
+        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsDest.Name = sheetName
+        Debug.Print "Sheet baru dibuat: " & sheetName
+    Else
+        Debug.Print "Sheet ditemukan: " & sheetName
+    End If
+    On Error GoTo 0
+    
+    ' Proses SCD dari Ferry
+    ProcessPlantFile wsDest, _
+        GetAttachmentFromEmail("Ferry Hermansyah Lubis", "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", targetDate), _
+        targetDate, "SCD/IE/HYD", True
+    
+    ' Proses CBS dari Putri
+    ProcessPlantFile wsDest, _
+        GetAttachmentFromEmail("Putri Yolla Safitri", "02. Report Daily CBS HO Agustus 2025.xlsx", targetDate), _
+        targetDate, "CBS", True
+    
+    Debug.Print "=== Selesai GenerateSCD_CBS_Report ==="
+    MsgBox "Output SCD, IE-FAT, HYD, dan CBS berhasil ditulis.", vbInformation
+End Sub
+
+
+' ==== Proses file plant ====
+Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date, mode As String, Optional DebugMode As Boolean = False)
+    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
+    Dim dictProducts As Object, dictDescriptions As Object
+    Dim prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long
+    Dim foundProdCol As Boolean, foundInputCol As Boolean
+    Dim inputTotal As Double, lastRow As Long
+    Dim joinedProducts As String, joinedDescriptions As String
+    Dim currentLabel As String, headerRow1 As Long, headerRow2 As Long
+    
+    If filePath = "" Then
+        Debug.Print "File tidak ditemukan untuk mode: " & mode
+        Exit Sub
+    End If
+    
+    Debug.Print "Memproses file: " & filePath & " [Mode: " & mode & "]"
+    
+    Set xlApp = CreateObject("Excel.Application")
+    xlApp.Visible = False
+    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
+    
+    For Each xlWs In xlWb.Sheets
+        Debug.Print "  Sheet: " & xlWs.Name
+        Set dictProducts = CreateObject("Scripting.Dictionary")
+        Set dictDescriptions = CreateObject("Scripting.Dictionary")
+        inputTotal = 0
+        foundProdCol = False: foundInputCol = False
+        
+        ' --- Tentukan header & kolom berdasarkan mode ---
+        Select Case True
+            Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*scd*"
+                currentLabel = "SCD Plant": headerRow1 = 9: headerRow2 = 10: descCol1 = 76: descCol2 = 92
+            
+            Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*ie*"
+                currentLabel = "IE-FAT Plant": headerRow1 = 6: headerRow2 = 7: descCol1 = 48: descCol2 = 0
+            
+            Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*hyd*"
+                currentLabel = "Hydrogenation": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
+            
+            Case mode = "CBS" And LCase(xlWs.Name) Like "*scd-cbs*"
+                currentLabel = "SCD CBS Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 76: descCol2 = 92
+            
+            Case mode = "CBS" And LCase(xlWs.Name) Like "*hydro 2*"
+                currentLabel = "HYD CBS": headerRow1 = 5: headerRow2 = 6: descCol1 = 48: descCol2 = 0
+            
+            Case mode = "CBS" And LCase(xlWs.Name) Like "pko-fract*"
+                currentLabel = "PKO-FRACT Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 48: descCol2 = 92
+            
+            Case Else
+                Debug.Print "    >> Sheet dilewati."
+                GoTo NextSheet
+        End Select
+        
+        ' --- Cari kolom ---
+        Call FindColumns(xlWs, headerRow1, headerRow2, prodCol, foundProdCol, inputCol, foundInputCol)
+        
+        ' --- Kumpulkan data ---
+        CollectData xlWs, targetDate, prodCol, inputCol, descCol1, descCol2, dictProducts, dictDescriptions, inputTotal, foundProdCol, foundInputCol, DebugMode
+        
+        ' --- Output ke sheet utama ---
+        joinedProducts = JoinDictionaryKeys(dictProducts)
+        joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
+        
+        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 2
+        wsDest.Cells(lastRow, 1).Value = currentLabel
+        
+        If inputTotal > 0 Then
+            wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
+            wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputTotal / 1000, "0") & " Ton"
+            If joinedDescriptions <> "" Then
+                wsDest.Cells(lastRow + 3, 1).Value = "Description : " & joinedDescriptions
+            End If
+        Else
+            wsDest.Cells(lastRow + 1, 1).Value = "Stop Plant"
+            wsDest.Cells(lastRow + 2, 1).Value = "Fit to PPIC Planning"
+        End If
+        
+NextSheet:
+    Next xlWs
+    
+    xlWb.Close False
+    xlApp.Quit
+End Sub
+
+
+Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
+                ByRef prodCol As Long, ByRef foundProd As Boolean, _
+                ByRef inputCol As Long, ByRef foundInput As Boolean)
+
+    Dim i As Long, maxCol As Long
+    Dim h1 As String, h2 As String
+    Dim headerCombo As String
+
+    ' Cari kolom terakhir di baris header
+    maxCol = ws.Cells(hdrRow1, ws.Columns.Count).End(xlToLeft).Column
+
+    For i = 1 To maxCol
+        ' Ambil header baris 1 & 2 (handle merge)
+        h1 = LCase(Trim(ws.Cells(hdrRow1, i).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(hdrRow2, i).MergeArea.Cells(1, 1).Value))
+        headerCombo = h1 & " > " & h2
+
+        ' ==== Cari kolom product berdasarkan kombinasi header ====
+        Select Case True
+            Case h1 Like "*product*" And h2 Like "*refine*"
+                prodCol = i: foundProd = True
+            Case h1 Like "*product*" And h2 Like "*hydrogenated*"
+                prodCol = i: foundProd = True
+            Case h1 Like "*product*" And h2 Like "*quality*"
+                prodCol = i: foundProd = True
+            Case h1 Like "*product*" And h2 Like "*fractination*"
+                prodCol = i: foundProd = True
+        End Select
+
+        ' ==== Cari kolom input (sesuaikan pola yang kamu mau) ====
+        If h1 Like "*input*" Then
+            inputCol = i: foundInput = True
+        End If
+
+        ' Debug untuk cek header yang dibaca
+        Debug.Print "Col " & i & ": " & headerCombo
+    Next i
+End Sub
+
+
+
+' ==== Kumpulkan data ====
+Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long, _
+                dictProducts As Object, dictDescriptions As Object, ByRef inputTotal As Double, _
+                foundProd As Boolean, foundInput As Boolean, Optional DebugMode As Boolean = False)
+    
+    Dim lastRow As Long, i As Long
+    Dim prodName As String, descText As String, descText2 As String
+    Dim cellDate As Variant
+    
+    lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).Row
+    
+    If DebugMode Then
+        Debug.Print "=== CollectData (" & ws.Name & ") ==="
+        Debug.Print "Target Date: " & targetDate & ", LastRow: " & lastRow
+    End If
+    
+    For i = 2 To lastRow
+        cellDate = ws.Cells(i, 1).Value
+        
+        If IsDate(cellDate) And cellDate = targetDate Then
+            prodName = Trim(ws.Cells(i, prodCol).Value)
+            If Len(prodName) > 0 Then
+                foundProd = True
+                If Not dictProducts.Exists(prodName) Then dictProducts(prodName) = 0
+                dictProducts(prodName) = dictProducts(prodName) + 1
+                If DebugMode Then Debug.Print "Produk: " & prodName
+            End If
+            
+            If IsNumeric(ws.Cells(i, inputCol).Value) Then
+                foundInput = True
+                inputTotal = inputTotal + ws.Cells(i, inputCol).Value
+                If DebugMode Then Debug.Print "Input: " & ws.Cells(i, inputCol).Value
+            End If
+            
+            descText = Trim(ws.Cells(i, descCol1).Value)
+            If descCol2 > 0 Then descText2 = Trim(ws.Cells(i, descCol2).Value) Else descText2 = ""
+            
+            If Len(descText & descText2) > 0 Then
+                If Not dictDescriptions.Exists(descText & descText2) Then dictDescriptions(descText & descText2) = 0
+                dictDescriptions(descText & descText2) = dictDescriptions(descText & descText2) + 1
+                If DebugMode Then Debug.Print "Deskripsi: " & descText & " " & descText2
+            End If
+        End If
+    Next i
+End Sub
+
+
+' ==== Gabung dictionary ====
+Function JoinDictionaryKeys(dict As Object) As String
+    Dim key As Variant, result As String
+    For Each key In dict.Keys
+        result = result & IIf(result <> "", ", ", "") & key
+    Next
+    JoinDictionaryKeys = result
+End Function
+
+
