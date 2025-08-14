@@ -52,7 +52,7 @@ Sub GenerateSCD_CBS_Report()
     On Error Resume Next
     Set wsDest = ThisWorkbook.Sheets(sheetName)
     If wsDest Is Nothing Then
-        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
         wsDest.Name = sheetName
         Debug.Print "Sheet baru dibuat: " & sheetName
     Else
@@ -138,14 +138,14 @@ Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date
         joinedProducts = JoinDictionaryKeys(dictProducts)
         joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
         
-        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row + 2
+        lastRow = wsDest.Cells(wsDest.Rows.count, 1).End(xlUp).Row + 2
         wsDest.Cells(lastRow, 1).Value = currentLabel
         
         If inputTotal > 0 Then
             wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
             wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputTotal / 1000, "0") & " Ton"
             If joinedDescriptions <> "" Then
-                wsDest.Cells(lastRow + 3, 1).Value = "Description : " & joinedDescriptions
+                wsDest.Cells(lastRow + 3, 1).Value = "" & joinedDescriptions
             End If
         Else
             wsDest.Cells(lastRow + 1, 1).Value = "Stop Plant"
@@ -169,7 +169,7 @@ Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
     Dim headerCombo As String
 
     ' Cari kolom terakhir di baris header
-    maxCol = ws.Cells(hdrRow1, ws.Columns.Count).End(xlToLeft).Column
+    maxCol = ws.Cells(hdrRow1, ws.Columns.count).End(xlToLeft).Column
 
     For i = 1 To maxCol
         ' Ambil header baris 1 & 2 (handle merge)
@@ -210,7 +210,7 @@ Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol A
     Dim prodName As String, descText As String, descText2 As String
     Dim cellDate As Variant
     
-    lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).Row
+    lastRow = ws.Cells(ws.Rows.count, prodCol).End(xlUp).Row
     
     If DebugMode Then
         Debug.Print "=== CollectData (" & ws.Name & ") ==="
@@ -235,14 +235,34 @@ Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol A
                 If DebugMode Then Debug.Print "Input: " & ws.Cells(i, inputCol).Value
             End If
             
-            descText = Trim(ws.Cells(i, descCol1).Value)
-            If descCol2 > 0 Then descText2 = Trim(ws.Cells(i, descCol2).Value) Else descText2 = ""
-            
-            If Len(descText & descText2) > 0 Then
-                If Not dictDescriptions.Exists(descText & descText2) Then dictDescriptions(descText & descText2) = 0
-                dictDescriptions(descText & descText2) = dictDescriptions(descText & descText2) + 1
-                If DebugMode Then Debug.Print "Deskripsi: " & descText & " " & descText2
-            End If
+' Ambil nilai deskripsi pertama
+descText = Trim(ws.Cells(i, descCol1).Value)
+If LCase(descText) = "0" Then descText = ""
+
+' Ambil nilai deskripsi kedua
+If descCol2 > 0 Then
+    descText2 = Trim(ws.Cells(i, descCol2).Value)
+    If LCase(descText2) = "0" Then descText2 = ""
+Else
+    descText2 = ""
+End If
+
+' Gabungkan
+Dim fullDesc As String
+fullDesc = Trim(descText & " " & descText2)
+
+' Simpan kalau tidak kosong
+If Len(fullDesc) > 0 Then
+    If Not dictDescriptions.Exists(fullDesc) Then
+        dictDescriptions(fullDesc) = 0
+    End If
+    dictDescriptions(fullDesc) = dictDescriptions(fullDesc) + 1
+    
+    If DebugMode Then Debug.Print "Deskripsi: " & fullDesc
+End If
+
+
+
         End If
     Next i
 End Sub
@@ -256,5 +276,4 @@ Function JoinDictionaryKeys(dict As Object) As String
     Next
     JoinDictionaryKeys = result
 End Function
-
 
