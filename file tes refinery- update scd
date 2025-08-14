@@ -1,330 +1,113 @@
-Sub GenerateCombinedRefineryPTRscd()
-    Dim refFilePath As String, ptrFilePath As String
-    Dim scdFilePath As String, hydFilePath As String, ieFilePath As String
-    Dim scdCbsFilePath As String, hydro2FilePath As String, pkoFractFilePath As String
 
-    Dim refFileName As String, ptrFileName As String
-    Dim scdFileName As String, hydFileName As String, ieFileName As String
-    Dim scdCbsFileName As String, hydro2FileName As String, pkoFractFileName As String
-
-    Dim scdFound As Boolean, hydFound As Boolean, ieFound As Boolean
-    Dim scdCbsFound As Boolean, hydro2Found As Boolean, pkoFractFound As Boolean
-
-    Dim saveFolder As String
-    Dim sheetName As String
-    Dim todayDay As Integer
-    Dim todayDate As Date
-    Dim currentRow As Long
-    Dim isEndOfMonth As Boolean
-    Dim isStartOfMonth As Boolean
-
-    ' Outlook
+' Fungsi ambil file dari email Outlook berdasarkan nama pengirim & nama file
+Function GetFileFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim senderName As Variant
+    
+    GetFileFromEmail = ""
+    
+    ' Buka Outlook
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+    If olApp Is Nothing Then Exit Function
+    
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
+    
+    For Each olMail In olItems
+        If olMail.Class = 43 Then ' 43 = MailItem
+            If Int(olMail.ReceivedTime) = targetDate Then
+                For Each senderName In senderNames
+                    If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                        For Each olAtmt In olMail.Attachments
+                            If olAtmt.fileName = fileName Then
+                                olAtmt.SaveAsFile saveFolder & fileName
+                                GetFileFromEmail = saveFolder & fileName
+                                Exit Function
+                            End If
+                        Next olAtmt
+                    End If
+                Next senderName
+            End If
+        End If
+    Next olMail
+End Function
 
-    ' Worksheet aktif
-    Dim wsTarget As Worksheet
-
-    ' Status file
+Sub GenerateCombinedRefineryPTR()
+    Dim refFilePath As String, ptrFilePath As String
+    Dim refFileName As String, ptrFileName As String
     Dim refFound As Boolean, ptrFound As Boolean
-    Dim i As Long
-
+    
+    Dim saveFolder As String, sheetName As String
+    Dim todayDay As Integer, todayDate As Date
+    Dim currentRow As Long
+    Dim wsTarget As Worksheet
+    
     ' Persiapan variabel
     todayDate = Date
     todayDay = Day(Date - 1)
     sheetName = CStr(todayDay)
     saveFolder = Environ("TEMP") & "\"
-
+    
+    ' Nama file
     refFileName = "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx"
     ptrFileName = "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx"
-    scdFileName = "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx" ' Pastikan sesuai
-    hydFileName = "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx" ' Pastikan sesuai
-    ieFileName = "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx" ' Pastikan sesuai
-        ' Tambahan untuk file dari Putri
-    scdCbsFileName = "02. Report Daily CBS HO Agustus 2025.xlsx" ' File dari Putri, sheet SCD-CBS
-    hydro2FileName = "02. Report Daily CBS HO Agustus 2025.xlsx" ' File dari Putri, sheet Hydro 2
-    pkoFractFileName = "02. Report Daily CBS HO Agustus 2025.xlsx" ' File dari Putri, sheet PKO-Fract
-
+    
     ' Ambil file dari email
-    Set olApp = GetObject(, "Outlook.Application")
-    Set olNs = olApp.GetNamespace("MAPI")
-    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
-    Set olItems = olFolder.Items
-    olItems.Sort "[ReceivedTime]", True
-
-  For Each olMail In olItems
-    If olMail.Class = 43 Then
-        If Int(olMail.ReceivedTime) = todayDate Then
-            ' Cek Refinery
-            If (InStr(1, olMail.senderName, "Nora Yohana Panjaitan", vbTextCompare) > 0 Or _
-                InStr(1, olMail.senderName, "Dhina Mutia", vbTextCompare) > 0) And Not refFound Then
-
-                For Each olAtmt In olMail.Attachments
-                    If olAtmt.Filename = refFileName Then
-                        olAtmt.SaveAsFile saveFolder & refFileName
-                        refFilePath = saveFolder & refFileName
-                        refFound = True
-                        Exit For
-                    End If
-                Next olAtmt
-            End If
-
-            ' Cek PTR
-            If (InStr(1, olMail.senderName, "Hani Wulandari", vbTextCompare) > 0 Or _
-                InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0) And Not ptrFound Then
-
-                For Each olAtmt In olMail.Attachments
-                    If olAtmt.Filename = ptrFileName Then
-                        olAtmt.SaveAsFile saveFolder & ptrFileName
-                        ptrFilePath = saveFolder & ptrFileName
-                        ptrFound = True
-                        Exit For
-                    End If
-                Next olAtmt
-            End If
-
-            ' Cek SCD, Hydrogenation, dan IE-FAT sekaligus karena pengirimnya sama
-            If InStr(1, olMail.senderName, "Ferry Hermansyah Lubis", vbTextCompare) > 0 Then
-                For Each olAtmt In olMail.Attachments
-                    If Not scdFound And olAtmt.Filename = scdFileName Then
-                        olAtmt.SaveAsFile saveFolder & scdFileName
-                        scdFilePath = saveFolder & scdFileName
-                        hydFilePath = scdFilePath
-                        ieFilePath = scdFilePath
-                        scdFound = True
-                        hydFound = True
-                        ieFound = True
-                        Exit For
-                    End If
-                Next olAtmt
-            End If
-            
-            
-            ' Cek SCD-CBS, Hydro 2, dan PKO-Fract sekaligus karena pengirimnya sama
-            If InStr(1, olMail.senderName, "Putri Yolla Safitri", vbTextCompare) > 0 Then
-                For Each olAtmt In olMail.Attachments
-                    If Not scdCbsFound And olAtmt.Filename = scdCbsFileName Then
-                        olAtmt.SaveAsFile saveFolder & scdCbsFileName
-                        scdCbsFilePath = saveFolder & scdCbsFileName
-                        hydro2FilePath = scdCbsFilePath
-                        pkoFractFilePath = scdCbsFilePath
-                        scdCbsFound = True
-                        hydro2Found = True
-                        pkoFractFound = True
-                        Exit For
-                    End If
-                Next olAtmt
-            End If
-            
-            
-            ' Jika semua file yang dibutuhkan sudah ditemukan, keluar dari loop email
-            If refFound And ptrFound And scdFound And hydFound And ieFound _
-                And scdCbsFound And hydro2Found And pkoFractFound Then Exit For
-        End If
-    End If
-Next olMail
-
-    ' Jalankan laporan ke worksheet aktif
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-
+    refFilePath = GetFileFromEmail(Array("Nora Yohana Panjaitan", "Dhina Mutia"), refFileName, saveFolder, todayDate)
+    refFound = (refFilePath <> "")
+    
+    ptrFilePath = GetFileFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), ptrFileName, saveFolder, todayDate)
+    ptrFound = (ptrFilePath <> "")
+    
     ' Hapus sheet jika sudah ada
-    Dim wsExist As Worksheet
     On Error Resume Next
-    Set wsExist = ThisWorkbook.Sheets(sheetName)
-    If Not wsExist Is Nothing Then
+    Set wsTarget = ThisWorkbook.Sheets(sheetName)
+    If Not wsTarget Is Nothing Then
         Application.DisplayAlerts = False
-        wsExist.Delete
+        wsTarget.Delete
         Application.DisplayAlerts = True
     End If
     On Error GoTo 0
-
-    ' Tambahkan sheet baru dan siapkan target
-    ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count)).Name = sheetName
-    Set wsTarget = ThisWorkbook.Sheets(sheetName)
-    wsTarget.Cells.Clear
+    
+    ' Buat sheet baru
+    Set wsTarget = ThisWorkbook.Sheets.Add(After:=Sheets(Sheets.count))
+    wsTarget.Name = sheetName
     currentRow = 1
-
+    
+    Application.ScreenUpdating = False
+    
     ' Proses Refinery
     If refFound Then
-        On Error Resume Next
         Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
         Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses Refinery"
-            currentRow = currentRow + 2
-            Err.Clear
-        End If
-        On Error GoTo 0
     Else
         wsTarget.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan": currentRow = currentRow + 2
     End If
-
+    
     ' Proses PTR
     If ptrFound Then
-        On Error Resume Next
         Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsTarget, currentRow, todayDay)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses PTR": currentRow = currentRow + 2
-            Err.Clear
-        End If
-        On Error GoTo 0
     Else
         wsTarget.Cells(currentRow, 1).Value = "File PTR tidak ditemukan": currentRow = currentRow + 2
     End If
-
-    ' Proses Fraksinasi
+    
+    ' Proses Fractination
     If refFound Then
-        On Error Resume Next
         Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
         Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses Fractination"
-            currentRow = currentRow + 2
-            Err.Clear
-        End If
-        On Error GoTo 0
     End If
     
-    ' Proses SCD
-    If scdFound Then
-        On Error Resume Next
-        Call ProcessSCDPlantReport(scdFilePath, todayDate)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses SCD Plant"
-            currentRow = currentRow + 2
-            Err.Clear
-        Else
-            currentRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).row + 2
-        End If
-        On Error GoTo 0
-    End If
-
-    ' Proses Hydrogenation
-    If hydFound Then
-        On Error Resume Next
-        Call ProcessHydrogenationReport(hydFilePath, todayDate)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses Hydrogenation Plant"
-            currentRow = currentRow + 2
-            Err.Clear
-        Else
-            currentRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).row + 2
-        End If
-        On Error GoTo 0
-    End If
-
-    ' Proses IE-FAT
-    If ieFound Then
-        On Error Resume Next
-        Call ProcessIEFATReport(ieFilePath, todayDate)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses IE-FAT Plant"
-            currentRow = currentRow + 2
-            Err.Clear
-        Else
-            currentRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).row + 2
-        End If
-        On Error GoTo 0
-    End If
-    
-        ' Proses SCD-CBS
-    If scdCbsFound Then
-        On Error Resume Next
-        Call ProcessSCDCBSReport(scdCbsFilePath, todayDate)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses SCD-CBS"
-            currentRow = currentRow + 2
-            Err.Clear
-        Else
-            currentRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).row + 2
-        End If
-        On Error GoTo 0
-    End If
-
-    ' Proses Hydro 2
-    If hydro2Found Then
-        On Error Resume Next
-        Call ProcessHydro2Report(hydro2FilePath, todayDate)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses Hydro 2"
-            currentRow = currentRow + 2
-            Err.Clear
-        Else
-            currentRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).row + 2
-        End If
-        On Error GoTo 0
-    End If
-
-    ' Proses PKO-Fract
-    If pkoFractFound Then
-        On Error Resume Next
-        Call ProcessPKOFractReport(pkoFractFilePath, todayDate)
-        If Err.Number <> 0 Then
-            wsTarget.Cells(currentRow, 1).Value = "Gagal memproses PKO-Fract"
-            currentRow = currentRow + 2
-            Err.Clear
-        Else
-            currentRow = wsTarget.Cells(wsTarget.Rows.Count, 1).End(xlUp).row + 2
-        End If
-        On Error GoTo 0
-    End If
-
-
-    ' Informasi status file
-    If refFound Then
-        MsgBox "? File Refinery ditemukan: " & refFilePath, vbInformation
-    Else
-        MsgBox "?? File Refinery dari Nora/Dhina tidak ditemukan hari ini!", vbExclamation
-    End If
-
-    If ptrFound Then
-        MsgBox "? File PTR ditemukan: " & ptrFilePath, vbInformation
-    Else
-        MsgBox "?? File PTR dari Hani/Wendy tidak ditemukan hari ini!", vbExclamation
-    End If
-
-    If scdFound Then
-        MsgBox "? File SCD ditemukan: " & scdFilePath, vbInformation
-    Else
-        MsgBox "?? File SCD dari Ferry Hermansyah Lubis tidak ditemukan hari ini!", vbExclamation
-    End If
-
-    If hydFound Then
-        MsgBox "? File Hydrogenation ditemukan: " & hydFilePath, vbInformation
-    Else
-        MsgBox "?? File Hydrogenation tidak ditemukan hari ini!", vbExclamation
-    End If
-
-    If ieFound Then
-        MsgBox "? File IE-FAT ditemukan: " & ieFilePath, vbInformation
-    Else
-        MsgBox "?? File IE-FAT tidak ditemukan hari ini!", vbExclamation
-    End If
-    
-        If scdCbsFound Then
-        MsgBox "? File SCD-CBS ditemukan: " & scdCbsFilePath, vbInformation
-    Else
-        MsgBox "? File SCD-CBS dari Putri Yolla Safitri tidak ditemukan hari ini!", vbExclamation
-    End If
-
-    If hydro2Found Then
-        MsgBox "? File Hydro 2 ditemukan: " & hydro2FilePath, vbInformation
-    Else
-        MsgBox "? File Hydro 2 dari Putri Yolla Safitri tidak ditemukan hari ini!", vbExclamation
-    End If
-
-    If pkoFractFound Then
-        MsgBox "? File PKO-Fract ditemukan: " & pkoFractFilePath, vbInformation
-    Else
-        MsgBox "? File PKO-Fract dari Putri Yolla Safitri tidak ditemukan hari ini!", vbExclamation
-    End If
-
-
     Application.ScreenUpdating = True
-    MsgBox "? Laporan gabungan berhasil dibuat di sheet aktif (" & wsTarget.Name & ")", vbInformation
-
+    
+    MsgBox "Laporan gabungan selesai dibuat di sheet: " & wsTarget.Name, vbInformation
 End Sub
+
 ' ------------------ REFINERY & PTR ------------------
 Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
     Dim wb As Workbook, ws As Worksheet
@@ -344,7 +127,7 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
     Set ws = wb.Sheets(sheetSource)
 
 
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
     
 
     Set matchingRows = New Collection
@@ -384,7 +167,7 @@ For Each r In matchingRows
     Debug.Print "Matching baris: " & r
 Next r
 
-    If matchingRows.Count = 0 Then
+    If matchingRows.count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
         wb.Close False
         Exit Sub
@@ -484,7 +267,7 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
     Set ws = wb.Sheets(sheetSource)
     Set matchingRows = New Collection
 
-    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
 Dim isEndOfMonth As Boolean
 Dim isStartOfMonth As Boolean
 
@@ -515,7 +298,7 @@ For i = 10 To lastRow
 Next i
 
 
-    If matchingRows.Count = 0 Then
+    If matchingRows.count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
         wb.Close False
         Exit Sub
@@ -548,7 +331,7 @@ Next i
     
         ' Gabungkan semua downtimeText jadi satu string
     downtimeText = ""
-    If allDowntimes.Count > 0 Then
+    If allDowntimes.count > 0 Then
         Dim dt As Variant
         For Each dt In allDowntimes
             downtimeText = downtimeText & "- " & dt & vbCrLf
@@ -601,311 +384,14 @@ Next i
     wb.Close SaveChanges:=False
 End Sub
 
-Sub ProcessSCDPlantReport(filePath As String, searchValueDate As Date)
-    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
-    Dim inputCol As Long, prodCol As Long, maxCol As Long
-    Dim foundInputCol As Boolean, foundProdCol As Boolean
-    Dim descColBX As Long, descColCN As Long
-    Dim lastDataRow As Long, i As Long
-    Dim inputProcessedTotal As Double
-    Dim prod As String, desc1 As String, desc2 As String, descCombined As String
-    Dim dictProducts As Object, dictDescriptions As Object, key As Variant
-    Dim joinedProducts As String, joinedDescriptions As String
-    Dim wsDest As Worksheet, lastRow As Long
 
-    Set xlApp = CreateObject("Excel.Application")
-    Set dictProducts = CreateObject("Scripting.Dictionary")
-    Set dictDescriptions = CreateObject("Scripting.Dictionary")
-    Set wsDest = ThisWorkbook.ActiveSheet
-
-    xlApp.Visible = False
-    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
-
-    For Each xlWs In xlWb.Sheets
-        If LCase(xlWs.Name) Like "*scd*" Then
-            lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).row
-            maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
-
-            descColBX = 76 ' Kolom BX
-            descColCN = 92 ' Kolom CN
-
-            ' Temukan kolom
-            For i = 1 To maxCol
-                If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Product" And _
-                   Trim(xlWs.Cells(10, i).Value) = "Refined" Then
-                    prodCol = i
-                    foundProdCol = True
-                End If
-                If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
-                   Trim(xlWs.Cells(10, i).Value) = "Kg" Then
-                    inputCol = i
-                    foundInputCol = True
-                End If
-            Next i
-
-            If foundProdCol Or foundInputCol Then
-                For i = 1 To lastDataRow
-                    If IsDate(xlWs.Cells(i, 1).Value) Then
-                        If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
-                            If foundProdCol Then
-                                prod = Trim(xlWs.Cells(i, prodCol).Value)
-                                If prod <> "" And Not dictProducts.exists(prod) Then
-                                    dictProducts.Add prod, True
-                                End If
-                            End If
-                            If foundInputCol Then
-                                If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
-                                    inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
-                                End If
-                            End If
-                            desc1 = Trim(xlWs.Cells(i, descColBX).Value)
-                            desc2 = Trim(xlWs.Cells(i, descColCN).Value)
-                            descCombined = desc1
-                            If desc2 <> "" Then
-                                If descCombined <> "" Then
-                                    descCombined = descCombined & ", " & desc2
-                                Else
-                                    descCombined = desc2
-                                End If
-                            End If
-                            If descCombined <> "" Then
-                                If Not dictDescriptions.exists(descCombined) Then
-                                    dictDescriptions.Add descCombined, True
-                                End If
-                            End If
-                        End If
-                    End If
-                Next i
-            End If
-
-            Exit For
-        End If
-    Next xlWs
-
-    xlWb.Close False
-    xlApp.Quit
-    Set xlApp = Nothing: Set xlWb = Nothing
-
-    ' Gabungkan hasil
-    For Each key In dictProducts.Keys
-        If joinedProducts = "" Then
-            joinedProducts = key
-        Else
-            joinedProducts = joinedProducts & ", " & key
-        End If
-    Next key
-
-    For Each key In dictDescriptions.Keys
-        If joinedDescriptions = "" Then
-            joinedDescriptions = key
-        Else
-            joinedDescriptions = joinedDescriptions & ", " & key
-        End If
-    Next key
-
-    ' Tulis ke worksheet
-    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-    wsDest.Cells(lastRow, 1).Value = "SCD Plant"
-    wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-    If inputProcessedTotal > 0 Then
-        wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
-    Else
-        wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
-        wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
-    End If
-
-    If joinedDescriptions <> "" Then
-        Dim descRow As Long
-        descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-        wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
-    End If
-
-    MsgBox "Output SCD berhasil ditulis.", vbInformation
-End Sub
-
-Sub ProcessHydrogenationReport(ByVal filePath As String, ByVal searchDate As Date)
-    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
-    Dim wsDest As Worksheet: Set wsDest = ThisWorkbook.ActiveSheet
-    Dim dictProducts As Object, dictDescriptions As Object
-    Dim inputProcessedTotal As Double
-    Dim prodCol As Long, inputCol As Long, maxCol As Long
-    Dim foundProdCol As Boolean, foundInputCol As Boolean
-    Dim i As Long, lastDataRow As Long, lastRow As Long
-    Dim prod As String, descText As String, descCol As Long
-    Dim joinedProducts As String, joinedDescriptions As String
-    Dim key As Variant
-
-    descCol = 51 ' AY
-
-    Set dictProducts = CreateObject("Scripting.Dictionary")
-    Set dictDescriptions = CreateObject("Scripting.Dictionary")
-
-    Set xlApp = CreateObject("Excel.Application")
-    xlApp.Visible = False
-    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
-
-    For Each xlWs In xlWb.Sheets
-        If LCase(xlWs.Name) Like "*hydro*" Or LCase(xlWs.Name) Like "*hydrogenation*" Then
-            lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).row
-            maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
-
-            For i = 1 To maxCol
-                If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Product" And _
-                   Trim(xlWs.Cells(10, i).Value) = "Hydrogenated" Then
-                    prodCol = i: foundProdCol = True
-                End If
-
-                If Trim(xlWs.Cells(9, i).MergeArea.Cells(1, 1).Value) = "Input processed" And _
-                   Trim(xlWs.Cells(10, i).Value) = "kg" Then
-                    inputCol = i: foundInputCol = True
-                End If
-            Next i
-
-            If foundProdCol Or foundInputCol Then
-                For i = 1 To lastDataRow
-                    If IsDate(xlWs.Cells(i, 1).Value) Then
-                        If DateValue(xlWs.Cells(i, 1).Value) = searchDate Then
-                            If foundProdCol Then
-                                prod = Trim(xlWs.Cells(i, prodCol).Value)
-                                If prod <> "" And Not dictProducts.exists(prod) Then dictProducts.Add prod, True
-                            End If
-                            If foundInputCol Then
-                                If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
-                                    inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
-                                End If
-                            End If
-                            descText = Trim(xlWs.Cells(i, descCol).Value2)
-                            If descText <> "" Then
-                                If Not dictDescriptions.exists(descText) Then dictDescriptions.Add descText, True
-                            End If
-                        End If
-                    End If
-                Next i
-            End If
-        End If
-    Next xlWs
-
-    xlWb.Close False: xlApp.Quit
-    Set xlApp = Nothing: Set xlWb = Nothing
-
-    For Each key In dictProducts.Keys
-        joinedProducts = joinedProducts & IIf(joinedProducts <> "", ", ", "") & key
-    Next
-    For Each key In dictDescriptions.Keys
-        joinedDescriptions = joinedDescriptions & IIf(joinedDescriptions <> "", ", ", "") & key
-    Next
-
-    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-    wsDest.Cells(lastRow, 1).Value = "HYD Plant"
-    wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-    If inputProcessedTotal > 0 Then
-        wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
-    Else
-        wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
-        wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
-    End If
-    If joinedDescriptions <> "" Then
-        Dim descRow As Long: descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-        wsDest.Cells(descRow, 1).Value = joinedDescriptions
-    End If
-End Sub
-
-Sub ProcessIEFATReport(filePath As String, searchValueDate As Date)
-    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
-    Dim wsDest As Worksheet
-    Dim lastRow As Long, maxCol As Long, i As Long
-    Dim inputCol As Long, prodCol As Long, descColAY As Long
-    Dim foundInputCol As Boolean, foundProdCol As Boolean
-    Dim inputProcessedTotal As Double
-    Dim dictProducts As Object, dictDescriptions As Object
-    Dim joinedProducts As String, joinedDescriptions As String
-    Dim matchingRows As Collection
-    Dim rowIdx As Variant
-    Dim prod As String, descText As String, key As Variant
-
-    ' === Setup dasar ===
-    descColAY = 48 ' AY
-    Set dictProducts = CreateObject("Scripting.Dictionary")
-    Set dictDescriptions = CreateObject("Scripting.Dictionary")
-    Set wsDest = ThisWorkbook.ActiveSheet
-
-    Set xlApp = CreateObject("Excel.Application")
-    xlApp.Visible = False
-    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
-
-    ' === Loop tiap sheet IE-FAT ===
-    For Each xlWs In xlWb.Sheets
-        If LCase(xlWs.Name) Like "*ie-fat*" Then
-            maxCol = xlWs.Cells(6, xlWs.Columns.Count).End(xlToLeft).Column
-            For i = 1 To maxCol
-                If Trim(xlWs.Cells(6, i).MergeArea.Cells(1, 1).Value) = "Product" And _
-                   LCase(Trim(xlWs.Cells(7, i).Value)) = "hydrogenated" Then
-                    prodCol = i: foundProdCol = True
-                End If
-                If Trim(xlWs.Cells(6, i).MergeArea.Cells(1, 1).Value) = "Input processed" And _
-                   LCase(Trim(xlWs.Cells(7, i).Value)) = "kg" Then
-                    inputCol = i: foundInputCol = True
-                End If
-            Next i
-
-            ' === Cari baris yang cocok dengan tanggal ===
-            Set matchingRows = GetMatchingRowsByDate(xlWs, searchValueDate)
-
-            ' === Proses data dari baris-baris tersebut ===
-            For Each rowIdx In matchingRows
-                If foundProdCol Then
-                    prod = Trim(xlWs.Cells(rowIdx, prodCol).Value)
-                    If prod <> "" And Not dictProducts.exists(prod) Then dictProducts.Add prod, True
-                End If
-                If foundInputCol And IsNumeric(xlWs.Cells(rowIdx, inputCol).Value) Then
-                    inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(rowIdx, inputCol).Value)
-                End If
-                descText = Trim(xlWs.Cells(rowIdx, descColAY).Value2)
-                If descText <> "" And Not dictDescriptions.exists(descText) Then
-                    dictDescriptions.Add descText, True
-                End If
-            Next rowIdx
-            Exit For
-        End If
-    Next xlWs
-
-    ' === Bersihkan Excel object ===
-    xlWb.Close False
-    xlApp.Quit
-    Set xlApp = Nothing: Set xlWb = Nothing
-
-    ' === Gabungkan hasil dan tulis ke worksheet ===
-    For Each key In dictProducts.Keys
-        joinedProducts = IIf(joinedProducts = "", key, joinedProducts & ", " & key)
-    Next key
-    For Each key In dictDescriptions.Keys
-        joinedDescriptions = IIf(joinedDescriptions = "", key, joinedDescriptions & ", " & key)
-    Next key
-
-    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-    wsDest.Cells(lastRow, 1).Value = "IE-FAT Plant"
-    wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-
-    If inputProcessedTotal > 0 Then
-        wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
-    Else
-        wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
-        wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
-    End If
-
-    If joinedDescriptions <> "" Then
-        Dim descRow As Long
-        descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-        wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
-    End If
-End Sub
 Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collection
     Dim i As Long, lastRow As Long
     Dim valDate As Variant, mergeVal As Variant
     Dim isEndOfMonth As Boolean, isStartOfMonth As Boolean
     Dim matches As New Collection
 
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.count, 1).End(xlUp).row
     isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
     isStartOfMonth = (Day(Date) = 1)
 
@@ -936,7 +422,7 @@ End Function
 ' ------------------ UTIL ------------------
 Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
     Dim lastCol As Long, col As Long, h1 As String, h2 As String
-    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+    lastCol = ws.Cells(h1Row, ws.Columns.count).End(xlToLeft).Column
     For col = 2 To lastCol
         h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
         h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
@@ -950,7 +436,7 @@ End Function
 
 Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
     Dim lastCol As Long, col As Long, h1 As String, h2 As String
-    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+    lastCol = ws.Cells(h1Row, ws.Columns.count).End(xlToLeft).Column
     For col = 2 To lastCol
         h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
         h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
@@ -963,370 +449,12 @@ Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As St
 End Function
 
 
-Sub ProcessSCDCBSReport(filePath As String, searchValueDate As Date)
-    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
-    Dim inputCol As Long, prodCol As Long, maxCol As Long
-    Dim foundInputCol As Boolean, foundProdCol As Boolean
-    Dim descColBX As Long, descColCN As Long
-    Dim lastDataRow As Long, i As Long
-    Dim inputProcessedTotal As Double
-    Dim prod As String, desc1 As String, desc2 As String, descCombined As String
-    Dim dictProducts As Object, dictDescriptions As Object, key As Variant
-    Dim joinedProducts As String, joinedDescriptions As String
-    Dim wsDest As Worksheet, lastRow As Long
-
-    Set xlApp = CreateObject("Excel.Application")
-    Set dictProducts = CreateObject("Scripting.Dictionary")
-    Set dictDescriptions = CreateObject("Scripting.Dictionary")
-    Set wsDest = ThisWorkbook.ActiveSheet
-
-    xlApp.Visible = False
-    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
-
-    For Each xlWs In xlWb.Sheets
-        If LCase(xlWs.Name) = "scd-cbs" Then
-            lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).row
-            maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
-
-            descColBX = 76 ' Kolom BX
-            descColCN = 92 ' Kolom CN
-
-            ' Temukan kolom
-            For i = 1 To maxCol
-                If Trim(xlWs.Cells(8, i).MergeArea.Cells(1, 1).Value) = "Product" And _
-                   Trim(xlWs.Cells(9, i).Value) = "Refined" Then
-                    prodCol = i
-                    foundProdCol = True
-                End If
-                If Trim(xlWs.Cells(8, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
-                   Trim(xlWs.Cells(9, i).Value) = "Kg" Then
-                    inputCol = i
-                    foundInputCol = True
-                End If
-            Next i
-
-            If foundProdCol Or foundInputCol Then
-                For i = 1 To lastDataRow
-                    If IsDate(xlWs.Cells(i, 1).Value) Then
-                        If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
-                            If foundProdCol Then
-                                prod = Trim(xlWs.Cells(i, prodCol).Value)
-                                If prod <> "" And Not dictProducts.exists(prod) Then
-                                    dictProducts.Add prod, True
-                                End If
-                            End If
-                            If foundInputCol Then
-                                If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
-                                    inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
-                                End If
-                            End If
-                            desc1 = Trim(xlWs.Cells(i, descColBX).Value)
-                            desc2 = Trim(xlWs.Cells(i, descColCN).Value)
-                            descCombined = desc1
-                            If desc2 <> "" Then
-                                If descCombined <> "" Then
-                                    descCombined = descCombined & ", " & desc2
-                                Else
-                                    descCombined = desc2
-                                End If
-                            End If
-                            If descCombined <> "" Then
-                                If Not dictDescriptions.exists(descCombined) Then
-                                    dictDescriptions.Add descCombined, True
-                                End If
-                            End If
-                        End If
-                    End If
-                Next i
-            End If
-
-            Exit For
-        End If
-    Next xlWs
-
-    xlWb.Close False
-    xlApp.Quit
-    Set xlApp = Nothing: Set xlWb = Nothing
-
-    ' Gabungkan hasil
-    For Each key In dictProducts.Keys
-        If joinedProducts = "" Then
-            joinedProducts = key
-        Else
-            joinedProducts = joinedProducts & ", " & key
-        End If
-    Next key
-
-    For Each key In dictDescriptions.Keys
-        If joinedDescriptions = "" Then
-            joinedDescriptions = key
-        Else
-            joinedDescriptions = joinedDescriptions & ", " & key
-        End If
-    Next key
-
-    ' Tulis ke worksheet
-    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-    wsDest.Cells(lastRow, 1).Value = "SCD-CBS"
-    wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-    If inputProcessedTotal > 0 Then
-        wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
-    Else
-        wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
-        wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
-    End If
-
-    If joinedDescriptions <> "" Then
-        Dim descRow As Long
-        descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-        wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
-    End If
-
-    MsgBox "Output SCD-CBS berhasil ditulis.", vbInformation
-End Sub
 
 
-Sub ProcessHydro2Report(filePath As String, searchValueDate As Date)
-    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
-    Dim inputCol As Long, prodCol As Long, maxCol As Long
-    Dim foundInputCol As Boolean, foundProdCol As Boolean
-    Dim descColBX As Long, descColCN As Long
-    Dim lastDataRow As Long, i As Long
-    Dim inputProcessedTotal As Double
-    Dim prod As String, desc1 As String, desc2 As String, descCombined As String
-    Dim dictProducts As Object, dictDescriptions As Object, key As Variant
-    Dim joinedProducts As String, joinedDescriptions As String
-    Dim wsDest As Worksheet, lastRow As Long
 
-    Set xlApp = CreateObject("Excel.Application")
-    Set dictProducts = CreateObject("Scripting.Dictionary")
-    Set dictDescriptions = CreateObject("Scripting.Dictionary")
-    Set wsDest = ThisWorkbook.ActiveSheet
 
-    xlApp.Visible = False
-    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
 
-    For Each xlWs In xlWb.Sheets
-        If LCase(xlWs.Name) = "hydro 2" Then
-            lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).row
-            maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
 
-            descColBX = 76 ' Kolom BX
-            descColCN = 92 ' Kolom CN
 
-            ' Temukan kolom
-            For i = 1 To maxCol
-                If Trim(xlWs.Cells(5, i).MergeArea.Cells(1, 1).Value) = "Product" And _
-                   Trim(xlWs.Cells(6, i).Value) = "Quality" Then
-                    prodCol = i
-                    foundProdCol = True
-                End If
-                If Trim(xlWs.Cells(5, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
-                   Trim(xlWs.Cells(6, i).Value) = "Kg" Then
-                    inputCol = i
-                    foundInputCol = True
-                End If
-            Next i
 
-            If foundProdCol Or foundInputCol Then
-                For i = 1 To lastDataRow
-                    If IsDate(xlWs.Cells(i, 1).Value) Then
-                        If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
-                            If foundProdCol Then
-                                prod = Trim(xlWs.Cells(i, prodCol).Value)
-                                If prod <> "" And Not dictProducts.exists(prod) Then
-                                    dictProducts.Add prod, True
-                                End If
-                            End If
-                            If foundInputCol Then
-                                If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
-                                    inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
-                                End If
-                            End If
-                            desc1 = Trim(xlWs.Cells(i, descColBX).Value)
-                            desc2 = Trim(xlWs.Cells(i, descColCN).Value)
-                            descCombined = desc1
-                            If desc2 <> "" Then
-                                If descCombined <> "" Then
-                                    descCombined = descCombined & ", " & desc2
-                                Else
-                                    descCombined = desc2
-                                End If
-                            End If
-                            If descCombined <> "" Then
-                                If Not dictDescriptions.exists(descCombined) Then
-                                    dictDescriptions.Add descCombined, True
-                                End If
-                            End If
-                        End If
-                    End If
-                Next i
-            End If
-
-            Exit For
-        End If
-    Next xlWs
-
-    xlWb.Close False
-    xlApp.Quit
-    Set xlApp = Nothing: Set xlWb = Nothing
-
-    ' Gabungkan hasil
-    For Each key In dictProducts.Keys
-        If joinedProducts = "" Then
-            joinedProducts = key
-        Else
-            joinedProducts = joinedProducts & ", " & key
-        End If
-    Next key
-
-    For Each key In dictDescriptions.Keys
-        If joinedDescriptions = "" Then
-            joinedDescriptions = key
-        Else
-            joinedDescriptions = joinedDescriptions & ", " & key
-        End If
-    Next key
-
-    ' Tulis ke worksheet
-    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-    wsDest.Cells(lastRow, 1).Value = "Hydro 2"
-    wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-    If inputProcessedTotal > 0 Then
-        wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
-    Else
-        wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
-        wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
-    End If
-
-    If joinedDescriptions <> "" Then
-        Dim descRow As Long
-        descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-        wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
-    End If
-
-    MsgBox "Output Hydro 2 berhasil ditulis.", vbInformation
-End Sub
-
-Sub ProcessPKOFractReport(filePath As String, searchValueDate As Date)
-    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
-    Dim inputCol As Long, prodCol As Long, maxCol As Long
-    Dim foundInputCol As Boolean, foundProdCol As Boolean
-    Dim descColBX As Long, descColCN As Long
-    Dim lastDataRow As Long, i As Long
-    Dim inputProcessedTotal As Double
-    Dim prod As String, desc1 As String, desc2 As String, descCombined As String
-    Dim dictProducts As Object, dictDescriptions As Object, key As Variant
-    Dim joinedProducts As String, joinedDescriptions As String
-    Dim wsDest As Worksheet, lastRow As Long
-
-    Set xlApp = CreateObject("Excel.Application")
-    Set dictProducts = CreateObject("Scripting.Dictionary")
-    Set dictDescriptions = CreateObject("Scripting.Dictionary")
-    Set wsDest = ThisWorkbook.ActiveSheet
-
-    xlApp.Visible = False
-    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
-
-    For Each xlWs In xlWb.Sheets
-        If LCase(xlWs.Name) = "pko-fract" Then
-            lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).row
-            maxCol = xlWs.Cells(9, xlWs.Columns.Count).End(xlToLeft).Column
-
-            descColBX = 76 ' Kolom BX
-            descColCN = 92 ' Kolom CN
-
-            ' Temukan kolom
-            For i = 1 To maxCol
-                If Trim(xlWs.Cells(8, i).MergeArea.Cells(1, 1).Value) = "Product" And _
-                   Trim(xlWs.Cells(9, i).Value) = "Fractination" Then
-                    prodCol = i
-                    foundProdCol = True
-                End If
-                If Trim(xlWs.Cells(8, i).MergeArea.Cells(1, 1).Value) = "Input Processed" And _
-                   Trim(xlWs.Cells(9, i).Value) = "Kg" Then
-                    inputCol = i
-                    foundInputCol = True
-                End If
-            Next i
-
-            If foundProdCol Or foundInputCol Then
-                For i = 1 To lastDataRow
-                    If IsDate(xlWs.Cells(i, 1).Value) Then
-                        If DateValue(xlWs.Cells(i, 1).Value) = searchValueDate Then
-                            If foundProdCol Then
-                                prod = Trim(xlWs.Cells(i, prodCol).Value)
-                                If prod <> "" And Not dictProducts.exists(prod) Then
-                                    dictProducts.Add prod, True
-                                End If
-                            End If
-                            If foundInputCol Then
-                                If IsNumeric(xlWs.Cells(i, inputCol).Value) Then
-                                    inputProcessedTotal = inputProcessedTotal + CDbl(xlWs.Cells(i, inputCol).Value)
-                                End If
-                            End If
-                            desc1 = Trim(xlWs.Cells(i, descColBX).Value)
-                            desc2 = Trim(xlWs.Cells(i, descColCN).Value)
-                            descCombined = desc1
-                            If desc2 <> "" Then
-                                If descCombined <> "" Then
-                                    descCombined = descCombined & ", " & desc2
-                                Else
-                                    descCombined = desc2
-                                End If
-                            End If
-                            If descCombined <> "" Then
-                                If Not dictDescriptions.exists(descCombined) Then
-                                    dictDescriptions.Add descCombined, True
-                                End If
-                            End If
-                        End If
-                    End If
-                Next i
-            End If
-
-            Exit For
-        End If
-    Next xlWs
-
-    xlWb.Close False
-    xlApp.Quit
-    Set xlApp = Nothing: Set xlWb = Nothing
-
-    ' Gabungkan hasil
-    For Each key In dictProducts.Keys
-        If joinedProducts = "" Then
-            joinedProducts = key
-        Else
-            joinedProducts = joinedProducts & ", " & key
-        End If
-    Next key
-
-    For Each key In dictDescriptions.Keys
-        If joinedDescriptions = "" Then
-            joinedDescriptions = key
-        Else
-            joinedDescriptions = joinedDescriptions & ", " & key
-        End If
-    Next key
-
-    ' Tulis ke worksheet
-    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-    wsDest.Cells(lastRow, 1).Value = "PKO-Fract"
-    wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-    If inputProcessedTotal > 0 Then
-        wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputProcessedTotal / 1000, "0") & " Ton"
-    Else
-        wsDest.Cells(lastRow + 2, 1).Value = "Stop Plant"
-        wsDest.Cells(lastRow + 3, 1).Value = "Fit to PPIC Planning"
-    End If
-
-    If joinedDescriptions <> "" Then
-        Dim descRow As Long
-        descRow = IIf(inputProcessedTotal > 0, lastRow + 3, lastRow + 4)
-        wsDest.Cells(descRow, 1).Value = "Description : " & joinedDescriptions
-    End If
-
-    MsgBox "Output PKO-Fract berhasil ditulis.", vbInformation
-End Sub
 
