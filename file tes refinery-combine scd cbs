@@ -1,11 +1,10 @@
-
-' Fungsi ambil file dari email Outlook berdasarkan nama pengirim & nama file
-Function GetFileFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
+' === Fungsi ambil file dari email Outlook berdasarkan nama pengirim & nama file ===
+Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim senderName As Variant
     
-    GetFileFromEmail = ""
+    GetAttachmentFromEmail = ""
     
     ' Buka Outlook
     On Error Resume Next
@@ -14,20 +13,24 @@ Function GetFileFromEmail(senderNames As Variant, fileName As String, saveFolder
     On Error GoTo 0
     If olApp Is Nothing Then Exit Function
     
+    ' Ambil folder Inbox
     Set olNs = olApp.GetNamespace("MAPI")
-    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
     Set olItems = olFolder.Items
     olItems.Sort "[ReceivedTime]", True
     
+    ' Loop semua email
     For Each olMail In olItems
         If olMail.Class = 43 Then ' 43 = MailItem
             If Int(olMail.ReceivedTime) = targetDate Then
+                ' Cek semua kemungkinan nama pengirim
                 For Each senderName In senderNames
                     If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                        ' Loop semua lampiran
                         For Each olAtmt In olMail.Attachments
                             If olAtmt.fileName = fileName Then
                                 olAtmt.SaveAsFile saveFolder & fileName
-                                GetFileFromEmail = saveFolder & fileName
+                                GetAttachmentFromEmail = saveFolder & fileName
                                 Exit Function
                             End If
                         Next olAtmt
@@ -38,75 +41,99 @@ Function GetFileFromEmail(senderNames As Variant, fileName As String, saveFolder
     Next olMail
 End Function
 
-Sub GenerateCombinedRefineryPTR()
+
+' === Sub utama membuat laporan gabungan ===
+Sub GenerateCombinedFullReport()
+    Dim targetDate As Date, sheetName As String
+    Dim wsDest As Worksheet, currentRow As Long
     Dim refFilePath As String, ptrFilePath As String
-    Dim refFileName As String, ptrFileName As String
-    Dim refFound As Boolean, ptrFound As Boolean
+    Dim scdFilePath As String, cbsFilePath As String
+    Dim saveFolder As String
     
-    Dim saveFolder As String, sheetName As String
-    Dim todayDay As Integer, todayDate As Date
-    Dim currentRow As Long
-    Dim wsTarget As Worksheet
-    
-    ' Persiapan variabel
-    todayDate = Date
-    todayDay = Day(Date - 1)
-    sheetName = CStr(todayDay)
+    ' Set tanggal target & folder simpan
+    targetDate = Date - 1
+    sheetName = Format(targetDate, "dd-mm-yyyy")
     saveFolder = Environ("TEMP") & "\"
     
-    ' Nama file
-    refFileName = "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx"
-    ptrFileName = "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx"
-    
-    ' Ambil file dari email
-    refFilePath = GetFileFromEmail(Array("Nora Yohana Panjaitan", "Dhina Mutia"), refFileName, saveFolder, todayDate)
-    refFound = (refFilePath <> "")
-    
-    ptrFilePath = GetFileFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), ptrFileName, saveFolder, todayDate)
-    ptrFound = (ptrFilePath <> "")
-    
-    ' Hapus sheet jika sudah ada
+    ' === Siapkan sheet ===
     On Error Resume Next
-    Set wsTarget = ThisWorkbook.Sheets(sheetName)
-    If Not wsTarget Is Nothing Then
+    Set wsDest = ThisWorkbook.Sheets(sheetName)
+    If Not wsDest Is Nothing Then
         Application.DisplayAlerts = False
-        wsTarget.Delete
+        wsDest.Delete
         Application.DisplayAlerts = True
     End If
     On Error GoTo 0
     
-    ' Buat sheet baru
-    Set wsTarget = ThisWorkbook.Sheets.Add(After:=Sheets(Sheets.count))
-    wsTarget.Name = sheetName
+    Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+    wsDest.Name = sheetName
     currentRow = 1
+    
+    ' === Ambil file dari email ===
+    refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+    If refFilePath = "" Then _
+        refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+    
+    ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+    If ptrFilePath = "" Then _
+        ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+    
+    scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
+                    "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", saveFolder, targetDate)
+    cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
+                    "02. Report Daily CBS HO Agustus 2025.xlsx", saveFolder, targetDate)
     
     Application.ScreenUpdating = False
     
-    ' Proses Refinery
-    If refFound Then
-        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsTarget, currentRow, todayDay)
-        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsTarget, currentRow, todayDay)
+    ' === Refinery ===
+    If refFilePath <> "" Then
+        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
     Else
-        wsTarget.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan": currentRow = currentRow + 2
+        wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
+        currentRow = currentRow + 2
     End If
     
-    ' Proses PTR
-    If ptrFound Then
-        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsTarget, currentRow, todayDay)
+    ' === PTR ===
+    If ptrFilePath <> "" Then
+        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
     Else
-        wsTarget.Cells(currentRow, 1).Value = "File PTR tidak ditemukan": currentRow = currentRow + 2
+        wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
+        currentRow = currentRow + 2
     End If
     
-    ' Proses Fractination
-    If refFound Then
-        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsTarget, currentRow, todayDay)
-        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsTarget, currentRow, todayDay)
+    ' === Fractination ===
+    If refFilePath <> "" Then
+        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
+    End If
+    
+    ' === SCD ===
+    If scdFilePath <> "" Then
+        ProcessPlantFile wsDest, scdFilePath, targetDate, "SCD/IE/HYD", True
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File SCD tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === CBS ===
+    If cbsFilePath <> "" Then
+        ProcessPlantFile wsDest, cbsFilePath, targetDate, "CBS", True
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File CBS tidak ditemukan"
+        currentRow = currentRow + 2
     End If
     
     Application.ScreenUpdating = True
     
-    MsgBox "Laporan gabungan selesai dibuat di sheet: " & wsTarget.Name, vbInformation
+    MsgBox "Laporan gabungan lengkap selesai dibuat di sheet: " & wsDest.Name, vbInformation
 End Sub
+
+
 
 ' ------------------ REFINERY & PTR ------------------
 Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
@@ -450,7 +477,244 @@ End Function
 
 
 
+' ==== Fungsi utama ====
+Sub GenerateSCD_CBS_Report()
+    Dim targetDate As Date, sheetName As String
+    Dim wsDest As Worksheet
+    
+    targetDate = Date - 1
+    sheetName = Format(targetDate, "dd-mm-yyyy")
+    Debug.Print "=== GenerateSCD_CBS_Report ==="
+    Debug.Print "Tanggal target: " & sheetName
+    
+    ' Siapkan sheet output
+    On Error Resume Next
+    Set wsDest = ThisWorkbook.Sheets(sheetName)
+    If wsDest Is Nothing Then
+        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+        wsDest.Name = sheetName
+        Debug.Print "Sheet baru dibuat: " & sheetName
+    Else
+        Debug.Print "Sheet ditemukan: " & sheetName
+    End If
+    On Error GoTo 0
+    
+    ' Proses SCD dari Ferry
+    ProcessPlantFile wsDest, _
+        GetAttachmentFromEmail("Ferry Hermansyah Lubis", "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", targetDate), _
+        targetDate, "SCD/IE/HYD", True
+    
+    ' Proses CBS dari Putri
+    ProcessPlantFile wsDest, _
+        GetAttachmentFromEmail("Putri Yolla Safitri", "02. Report Daily CBS HO Agustus 2025.xlsx", targetDate), _
+        targetDate, "CBS", True
+    
+    Debug.Print "=== Selesai GenerateSCD_CBS_Report ==="
+    MsgBox "Output SCD, IE-FAT, HYD, dan CBS berhasil ditulis.", vbInformation
+End Sub
 
+
+' ==== Proses file plant ====
+Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date, mode As String, Optional DebugMode As Boolean = False)
+    Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
+    Dim dictProducts As Object, dictDescriptions As Object
+    Dim prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long
+    Dim foundProdCol As Boolean, foundInputCol As Boolean
+    Dim inputTotal As Double, lastRow As Long
+    Dim joinedProducts As String, joinedDescriptions As String
+    Dim currentLabel As String, headerRow1 As Long, headerRow2 As Long
+    
+    If filePath = "" Then
+        Debug.Print "File tidak ditemukan untuk mode: " & mode
+        Exit Sub
+    End If
+    
+    Debug.Print "Memproses file: " & filePath & " [Mode: " & mode & "]"
+    
+    Set xlApp = CreateObject("Excel.Application")
+    xlApp.Visible = False
+    Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
+    
+    For Each xlWs In xlWb.Sheets
+        Debug.Print "  Sheet: " & xlWs.Name
+        Set dictProducts = CreateObject("Scripting.Dictionary")
+        Set dictDescriptions = CreateObject("Scripting.Dictionary")
+        inputTotal = 0
+        foundProdCol = False: foundInputCol = False
+        
+        ' --- Tentukan header & kolom berdasarkan mode ---
+        Select Case True
+            Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*scd*"
+                currentLabel = "SCD Plant": headerRow1 = 9: headerRow2 = 10: descCol1 = 76: descCol2 = 92
+            
+            Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*ie*"
+                currentLabel = "IE-FAT Plant": headerRow1 = 6: headerRow2 = 7: descCol1 = 48: descCol2 = 0
+            
+            Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*hyd*"
+                currentLabel = "Hydrogenation": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
+            
+            Case mode = "CBS" And LCase(xlWs.Name) Like "*scd-cbs*"
+                currentLabel = "SCD CBS Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 76: descCol2 = 92
+            
+            Case mode = "CBS" And LCase(xlWs.Name) Like "*hydro 2*"
+                currentLabel = "HYD CBS": headerRow1 = 5: headerRow2 = 6: descCol1 = 48: descCol2 = 0
+            
+            Case mode = "CBS" And LCase(xlWs.Name) Like "pko-fract*"
+                currentLabel = "PKO-FRACT Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 48: descCol2 = 92
+            
+            Case Else
+                Debug.Print "    >> Sheet dilewati."
+                GoTo NextSheet
+        End Select
+        
+        ' --- Cari kolom ---
+        Call FindColumns(xlWs, headerRow1, headerRow2, prodCol, foundProdCol, inputCol, foundInputCol)
+        
+        ' --- Kumpulkan data ---
+        CollectData xlWs, targetDate, prodCol, inputCol, descCol1, descCol2, dictProducts, dictDescriptions, inputTotal, foundProdCol, foundInputCol, DebugMode
+        
+        ' --- Output ke sheet utama ---
+        joinedProducts = JoinDictionaryKeys(dictProducts)
+        joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
+        
+        lastRow = wsDest.Cells(wsDest.Rows.count, 1).End(xlUp).row + 2
+        wsDest.Cells(lastRow, 1).Value = currentLabel
+        
+        If inputTotal > 0 Then
+            wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
+            wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputTotal / 1000, "0") & " Ton"
+            If joinedDescriptions <> "" Then
+                wsDest.Cells(lastRow + 3, 1).Value = "" & joinedDescriptions
+            End If
+        Else
+            wsDest.Cells(lastRow + 1, 1).Value = "Stop Plant"
+            wsDest.Cells(lastRow + 2, 1).Value = "Fit to PPIC Planning"
+        End If
+        
+NextSheet:
+    Next xlWs
+    
+    xlWb.Close False
+    xlApp.Quit
+End Sub
+
+
+Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
+                ByRef prodCol As Long, ByRef foundProd As Boolean, _
+                ByRef inputCol As Long, ByRef foundInput As Boolean)
+
+    Dim i As Long, maxCol As Long
+    Dim h1 As String, h2 As String
+    Dim headerCombo As String
+
+    ' Cari kolom terakhir di baris header
+    maxCol = ws.Cells(hdrRow1, ws.Columns.count).End(xlToLeft).Column
+
+    For i = 1 To maxCol
+        ' Ambil header baris 1 & 2 (handle merge)
+        h1 = LCase(Trim(ws.Cells(hdrRow1, i).MergeArea.Cells(1, 1).Value))
+        h2 = LCase(Trim(ws.Cells(hdrRow2, i).MergeArea.Cells(1, 1).Value))
+        headerCombo = h1 & " > " & h2
+
+        ' ==== Cari kolom product berdasarkan kombinasi header ====
+        Select Case True
+            Case h1 Like "*product*" And h2 Like "*refine*"
+                prodCol = i: foundProd = True
+            Case h1 Like "*product*" And h2 Like "*hydrogenated*"
+                prodCol = i: foundProd = True
+            Case h1 Like "*product*" And h2 Like "*quality*"
+                prodCol = i: foundProd = True
+            Case h1 Like "*product*" And h2 Like "*fractination*"
+                prodCol = i: foundProd = True
+        End Select
+
+        ' ==== Cari kolom input (sesuaikan pola yang kamu mau) ====
+        If h1 Like "*input*" Then
+            inputCol = i: foundInput = True
+        End If
+
+        ' Debug untuk cek header yang dibaca
+        Debug.Print "Col " & i & ": " & headerCombo
+    Next i
+End Sub
+
+
+
+' ==== Kumpulkan data ====
+Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long, _
+                dictProducts As Object, dictDescriptions As Object, ByRef inputTotal As Double, _
+                foundProd As Boolean, foundInput As Boolean, Optional DebugMode As Boolean = False)
+    
+    Dim lastRow As Long, i As Long
+    Dim prodName As String, descText As String, descText2 As String
+    Dim cellDate As Variant
+    
+    lastRow = ws.Cells(ws.Rows.count, prodCol).End(xlUp).row
+    
+    If DebugMode Then
+        Debug.Print "=== CollectData (" & ws.Name & ") ==="
+        Debug.Print "Target Date: " & targetDate & ", LastRow: " & lastRow
+    End If
+    
+    For i = 2 To lastRow
+        cellDate = ws.Cells(i, 1).Value
+        
+        If IsDate(cellDate) And cellDate = targetDate Then
+            prodName = Trim(ws.Cells(i, prodCol).Value)
+            If Len(prodName) > 0 Then
+                foundProd = True
+                If Not dictProducts.Exists(prodName) Then dictProducts(prodName) = 0
+                dictProducts(prodName) = dictProducts(prodName) + 1
+                If DebugMode Then Debug.Print "Produk: " & prodName
+            End If
+            
+            If IsNumeric(ws.Cells(i, inputCol).Value) Then
+                foundInput = True
+                inputTotal = inputTotal + ws.Cells(i, inputCol).Value
+                If DebugMode Then Debug.Print "Input: " & ws.Cells(i, inputCol).Value
+            End If
+            
+' Ambil nilai deskripsi pertama
+descText = Trim(ws.Cells(i, descCol1).Value)
+If LCase(descText) = "0" Then descText = ""
+
+' Ambil nilai deskripsi kedua
+If descCol2 > 0 Then
+    descText2 = Trim(ws.Cells(i, descCol2).Value)
+    If LCase(descText2) = "0" Then descText2 = ""
+Else
+    descText2 = ""
+End If
+
+' Gabungkan
+Dim fullDesc As String
+fullDesc = Trim(descText & " " & descText2)
+
+' Simpan kalau tidak kosong
+If Len(fullDesc) > 0 Then
+    If Not dictDescriptions.Exists(fullDesc) Then
+        dictDescriptions(fullDesc) = 0
+    End If
+    dictDescriptions(fullDesc) = dictDescriptions(fullDesc) + 1
+    
+    If DebugMode Then Debug.Print "Deskripsi: " & fullDesc
+End If
+
+
+
+        End If
+    Next i
+End Sub
+
+
+' ==== Gabung dictionary ====
+Function JoinDictionaryKeys(dict As Object) As String
+    Dim key As Variant, result As String
+    For Each key In dict.Keys
+        result = result & IIf(result <> "", ", ", "") & key
+    Next
+    JoinDictionaryKeys = result
+End Function
 
 
 
