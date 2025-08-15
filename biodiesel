@@ -5,7 +5,7 @@ Sub GenerateCombinedBIOReport()
     Dim startRow As Long
 
     ' Tentukan tanggal proses (kemarin)
-    targetDate = Date - 6
+    targetDate = Date - 1
     targetDay = Day(targetDate)
     
     ' Ambil file dari email hari ini
