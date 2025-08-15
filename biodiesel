@@ -19,7 +19,7 @@ Sub GenerateCombinedBIOReport()
     On Error Resume Next
     Set wsTarget = ThisWorkbook.Sheets(Format(targetDate, "dd"))
     If wsTarget Is Nothing Then
-        Set wsTarget = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+        Set wsTarget = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
         wsTarget.Name = Format(targetDate, "dd")
     End If
     On Error GoTo 0
@@ -57,14 +57,14 @@ Function GetAttachment_BIO(targetDate As Date) As String
     Set olItems = olFolder.Items
     olItems.Sort "[ReceivedTime]", True
     
-    For i = 1 To olItems.count
+    For i = 1 To olItems.Count
         Set olMail = olItems.Item(i)
         If olMail.Class = 43 Then
             If Int(olMail.ReceivedTime) = Int(Date) Then
                 If InStr(1, olMail.senderName, "Hani Wulandari", vbTextCompare) > 0 Or _
                    InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
                     For Each olAtmt In olMail.Attachments
-                        If olAtmt.fileName = baseName Then
+                        If olAtmt.Filename = baseName Then
                             olAtmt.SaveAsFile savePath
                             GetAttachment_BIO = savePath
                             Exit Function
@@ -92,7 +92,7 @@ Function GetCellVal(ws As Worksheet, targetRow As Long, _
 
     On Error GoTo ErrorHandler
 
-    lastCol = ws.Cells(headerRow1, ws.Columns.count).End(xlToLeft).Column
+    lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
 
     h1 = LCase(Trim(header1))
     h2 = LCase(Trim(header2))
@@ -171,7 +171,7 @@ Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As 
     Dim headerRow2 As Long: headerRow2 = 9
     Dim col As Long
     Dim i As Long, j As Long
-    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.count).End(xlToLeft).Column
+    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
 
     For col = 1 To lastCol
         j = 0
@@ -205,7 +205,7 @@ Function FindMatchingRows(ws As Worksheet, colDate As String, startRow As Long, 
     Dim lastRow As Long, i As Long
     Dim cell As Range, mergeVal As Variant
     
-    lastRow = ws.Cells(ws.Rows.count, colDate).End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.Count, colDate).End(xlUp).row
     
     For i = startRow To lastRow
         Set cell = ws.Cells(i, colDate)
@@ -242,7 +242,7 @@ Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel 
     Set ws = wb.Sheets(sheetSource)
     ' Cari baris tanggal target
     Set matchingRows = FindMatchingRows(ws, "A", 10, targetDate)
-    If matchingRows.count = 0 Then
+    If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
         wb.Close False
@@ -309,6 +309,32 @@ If Not IsError(tempVal) And IsNumeric(tempVal) Then
     electVal = tempVal
 End If
 
+' Downtime (teks) - gabung semua kolom bernama "Description"
+Dim col As Long, lastCol As Long
+Dim tempList As Collection, cellVal As String
+Set tempList = New Collection
+
+lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column ' header di baris 7, sesuaikan
+
+For col = 1 To lastCol
+    If Trim(LCase(ws.Cells(7, col).Value)) = "description" Then
+        cellVal = Trim(ws.Cells(dataRow, col).Value)
+        If Len(cellVal) > 0 Then tempList.Add cellVal
+    End If
+Next col
+
+If tempList.Count > 0 Then
+
+    For i = 1 To tempList.Count
+        If i = 1 Then
+            downtimeVal = tempList(i)
+        Else
+            downtimeVal = downtimeVal & " / " & tempList(i)
+        End If
+    Next i
+Else
+    downtimeVal = ""
+End If
 
 
 Debug.Print "Total feedKg: " & feedKg
@@ -367,7 +393,9 @@ Debug.Print "Fatty per MT: " & fattyKgPerMT
         Else
             .Cells(row, 1).Value = "Electricity : N/A"
         End If
-        row = row + 2
+        row = row + 1
+    .Cells(row, 1).Value = "" & downtimeVal
+    row = row + 2
     End With
 End Sub
 
@@ -386,7 +414,7 @@ Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As S
     Set matchingRows = New Collection
     
     ' Cari baris dengan tanggal target
-    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
     For i = 10 To lastRow
         Set cell = ws.Cells(i, 1)
         If cell.MergeCells Then
@@ -403,7 +431,7 @@ Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As S
     Next i
     
     ' Jika tidak ditemukan
-    If matchingRows.count = 0 Then
+    If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
         wb.Close False
@@ -422,16 +450,43 @@ Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As S
     If IsNumeric(tempVal) Then fameKg = tempVal Else fameKg = 0
     
     ' Electricity
-    tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow meter", "", "Kwh/MT Crude FAME")
+    tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow meter", "", "kWh/ton Feed")
     If Not IsError(tempVal) And IsNumeric(tempVal) Then electVal = tempVal
     
     ' Filter Aid
-    tempVal = GetCellVal(ws, dataRow, "Filter Aid", "Flow meter", "", "Kg/MT Crude FAME")
+    tempVal = GetCellVal(ws, dataRow, "Filter Aid", "", "Kg/ Ton Feed", "")
     If Not IsError(tempVal) And IsNumeric(tempVal) Then filterAidVal = tempVal
     
     ' Water
-    tempVal = GetCellVal(ws, dataRow, "Water", "Flow meter", "", "m3/MT Crude FAME")
+    tempVal = GetCellVal(ws, dataRow, "Water", "Flow meter", "", "M3/ton Feed")
     If Not IsError(tempVal) And IsNumeric(tempVal) Then waterVal = tempVal
+    
+    ' Downtime (teks) - gabung semua kolom bernama "Description"
+Dim col As Long, lastCol As Long
+Dim tempList As Collection, cellVal As String
+Set tempList = New Collection
+
+lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column ' header di baris 7, sesuaikan
+
+For col = 1 To lastCol
+    If Trim(LCase(ws.Cells(7, col).Value)) = "description" Then
+        cellVal = Trim(ws.Cells(dataRow, col).Value)
+        If Len(cellVal) > 0 Then tempList.Add cellVal
+    End If
+Next col
+
+If tempList.Count > 0 Then
+
+    For i = 1 To tempList.Count
+        If i = 1 Then
+            downtimeVal = tempList(i)
+        Else
+            downtimeVal = downtimeVal & " / " & tempList(i)
+        End If
+    Next i
+Else
+    downtimeVal = ""
+End If
     
     ' Output
     With wsTarget
@@ -458,7 +513,9 @@ Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As S
         Else
             .Cells(row, 1).Value = "Water : N/A"
         End If
-        row = row + 2
+        row = row + 1
+    .Cells(row, 1).Value = "" & downtimeVal
+    row = row + 2
     End With
     
     wb.Close False
@@ -481,7 +538,7 @@ Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabe
     Set ws = wb.Sheets(sheetSource)
     ' Cari baris tanggal target
     Set matchingRows = FindMatchingRows(ws, "A", 10, targetDate)
-    If matchingRows.count = 0 Then
+    If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
         row = row + 2
         wb.Close False
@@ -494,7 +551,7 @@ Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabe
     
     ' Feed
     tempVal = GetCellVal(ws, dataRow, "Feed", "Flow Meter", "", "Kg")
-    If IsNumeric(tempVal) Then feedKg = tempVal * 1000 Else feedKg = 0
+    If IsNumeric(tempVal) Then feedKg = tempVal Else feedKg = 0
     
     ' Refine Gly
     tempVal = GetCellVal(ws, dataRow, "Refined Glycerine", "Flow Meter", "", "kg")
@@ -513,11 +570,36 @@ Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabe
     If Not IsError(tempVal) And IsNumeric(tempVal) Then steamVal = tempVal
     
     ' Electric
-    tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow Meter", "", "Kwh/mt")
+    tempVal = GetCellVal(ws, dataRow, "Electricity", "Flow Meter", "", "Kwh/Ton Feed")
     If Not IsError(tempVal) And IsNumeric(tempVal) Then electVal = tempVal
     
-    ' Downtime (teks)
-    downtimeVal = GetTextVal(ws, dataRow, "Downtime")
+' Downtime (teks) - gabung semua kolom bernama "Description"
+Dim col As Long, lastCol As Long
+Dim tempList As Collection, cellVal As String
+Set tempList = New Collection
+
+lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column ' header di baris 7, sesuaikan
+
+For col = 1 To lastCol
+    If Trim(LCase(ws.Cells(7, col).Value)) = "description" Then
+        cellVal = Trim(ws.Cells(dataRow, col).Value)
+        If Len(cellVal) > 0 Then tempList.Add cellVal
+    End If
+Next col
+
+If tempList.Count > 0 Then
+
+    For i = 1 To tempList.Count
+        If i = 1 Then
+            downtimeVal = tempList(i)
+        Else
+            downtimeVal = downtimeVal & " / " & tempList(i)
+        End If
+    Next i
+Else
+    downtimeVal = ""
+End If
+
     
     ' Output
     With wsTarget
@@ -547,11 +629,10 @@ Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabe
     End If
     row = row + 1
     
-    .Cells(row, 1).Value = "Downtime : " & downtimeVal
+    .Cells(row, 1).Value = "" & downtimeVal
     row = row + 2
 End With
     
     wb.Close False
 End Sub
-
 
