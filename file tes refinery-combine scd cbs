@@ -65,7 +65,7 @@ Sub GenerateCombinedFullReport()
     End If
     On Error GoTo 0
     
-    Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+    Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
     wsDest.Name = sheetName
     currentRow = 1
     
@@ -135,12 +135,23 @@ End Sub
 
 
 
+' ==== Fungsi pembagian aman ====
+Private Function SafeDiv(numerator As Double, denominator As Double) As Double
+    If denominator = 0 Or IsError(denominator) Or IsError(numerator) _
+       Or IsEmpty(denominator) Or IsEmpty(numerator) _
+       Or Not IsNumeric(denominator) Or Not IsNumeric(numerator) Then
+        SafeDiv = 0
+    Else
+        SafeDiv = numerator / denominator
+    End If
+End Function
+
 ' ------------------ REFINERY & PTR ------------------
 Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
     Dim wb As Workbook, ws As Worksheet
     Dim lastRow As Long, i As Long
     Dim matchingRows As Collection
-    Dim cell As Range, mergeVal As Variant
+    Dim mergeVal As Variant
     Dim totalCPOKg As Double, totalRBDPOKg As Double, totalPFADKg As Double
     Dim weightedSteam As Double, weightedElectricity As Double
     Dim weightedBE As Double, weightedPA As Double
@@ -153,21 +164,12 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
     Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     Set ws = wb.Sheets(sheetSource)
 
-
-    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
-    
-
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
     Set matchingRows = New Collection
-    
+
     Dim isEndOfMonth As Boolean
-    
-    Dim isStartOfMonth As Boolean
-    
-    Set matchingRows = New Collection
-    
     isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
-    isStartOfMonth = (Day(Date) = 1)
-    
+
     For i = 10 To lastRow
         If ws.Cells(i, 1).MergeCells Then
             mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
@@ -177,25 +179,16 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
     
         If mergeVal = targetDay Then
             If isEndOfMonth Then
-                If i >= 150 Then
-                    Debug.Print "? Akhir bulan, ambil baris >=150: " & i
-                    matchingRows.Add i
-                Else
-                    Debug.Print "? Akhir bulan, skip baris <150: " & i
-                End If
+                If i >= 150 Then matchingRows.Add i
             Else
-                Debug.Print "? Tengah bulan, ambil semua baris: " & i
                 matchingRows.Add i
             End If
         End If
     Next i
-' Debugging: Tampilkan baris yang cocok di Immediate Window
-For Each r In matchingRows
-    Debug.Print "Matching baris: " & r
-Next r
 
-    If matchingRows.count = 0 Then
-        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
+    If matchingRows.Count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+        row = row + 2
         wb.Close False
         Exit Sub
     End If
@@ -224,62 +217,67 @@ Next r
 
     wb.Close False
 
-    Dim cpoMT As Long, rbdpoMT As Long, pfadMT As Long
-    Dim rbdpoPct As Double, pfadPct As Double
-
-    cpoMT = Round(totalCPOKg / 1000)
-    rbdpoMT = Round(totalRBDPOKg / 1000)
-    pfadMT = Round(totalPFADKg / 1000)
-
-    If totalCPOKg > 0 Then
-        rbdpoPct = totalRBDPOKg / totalCPOKg * 100
-        pfadPct = totalPFADKg / totalCPOKg * 100
-    End If
+    Dim cpoMT As Long
+    cpoMT = Round(SafeDiv(totalCPOKg, 1000))
 
     With wsTarget
-        .Cells(row, 1).Value = plantLabel: row = row + 1
-        .Cells(row, 1).Value = "Quantity": row = row + 1
-        .Cells(row, 1).Value = "CPO process : " & cpoMT & " MT": row = row + 1
-        .Cells(row, 1).Value = "RBDPO : " & rbdpoMT & " MT (" & Format(rbdpoPct, "0.00") & " %)": row = row + 1
-        .Cells(row, 1).Value = "PFAD : " & pfadMT & " MT (" & Format(pfadPct, "0.00") & " %)": row = row + 1
-        .Cells(row, 1).Value = "Consumption": row = row + 1
-        .Cells(row, 1).Value = "Steam : " & Round(weightedSteam / totalCPOKg, 0) & " kg/MT cpo": row = row + 1
-        .Cells(row, 1).Value = "Elect : " & Round(weightedElectricity / totalCPOKg, 0) & " kWh/MT": row = row + 1
-        .Cells(row, 1).Value = "BE : " & Format(weightedBE / totalCPOKg, "0.00") & " %": row = row + 1
-        .Cells(row, 1).Value = "PA : " & Format(weightedPA / totalCPOKg, "0.00") & " %": row = row + 1
-        .Cells(row, 1).Value = "Quality": row = row + 1
-        .Cells(row, 1).Value = "CPO FFA : " & Format(weightedCPOFFA / totalCPOKg, "0.00") & " %": row = row + 1
-        .Cells(row, 1).Value = "RBDPO FFA : " & Format(weightedRBDPOFFA / totalCPOKg, "0.00") & " %": row = row + 1
-        .Cells(row, 1).Value = "Color RBDPO : " & Format(weightedRBDPOCol / totalCPOKg, "0.0"): row = row + 1
-        .Cells(row, 1).Value = "PFAD purity : " & Format(weightedPFADPurity / totalCPOKg, "0.00") & " %": row = row + 1
-    ' Gabungkan downtimeText dalam satu baris, tanpa label "Downtime:"
-    If downtimeText <> "" Then
-        Dim arr() As String: arr = Split(downtimeText, vbCrLf)
-        Dim combinedText As String
-        combinedText = ""
+        .Cells(row, 1).Value = plantLabel
+        row = row + 1
 
-        For i = 0 To UBound(arr)
-            Dim cleaned As String
-            cleaned = Trim(arr(i))
+        If cpoMT > 0 Then
+            ' Normal output kalau CPO > 0
+            Dim rbdpoMT As Long, pfadMT As Long
+            Dim rbdpoPct As Double, pfadPct As Double
 
-            If cleaned <> "" And cleaned <> "0" And cleaned <> "- 0" Then
-                If combinedText <> "" Then
-                    combinedText = combinedText & ", " & cleaned
-                Else
-                    combinedText = cleaned
-                End If
-            End If
-        Next i
+            rbdpoMT = Round(SafeDiv(totalRBDPOKg, 1000))
+            pfadMT = Round(SafeDiv(totalPFADKg, 1000))
+            rbdpoPct = SafeDiv(totalRBDPOKg, totalCPOKg) * 100
+            pfadPct = SafeDiv(totalPFADKg, totalCPOKg) * 100
 
-        If combinedText <> "" Then
-            .Cells(row, 1).Value = combinedText
-            row = row + 1
+            .Cells(row, 1).Value = "Quantity": row = row + 1
+            .Cells(row, 1).Value = "CPO process : " & cpoMT & " MT": row = row + 1
+            .Cells(row, 1).Value = "RBDPO : " & rbdpoMT & " MT (" & Format(rbdpoPct, "0.00") & " %)": row = row + 1
+            .Cells(row, 1).Value = "PFAD : " & pfadMT & " MT (" & Format(pfadPct, "0.00") & " %)": row = row + 1
+            .Cells(row, 1).Value = "Consumption": row = row + 1
+            .Cells(row, 1).Value = "Steam : " & Round(SafeDiv(weightedSteam, totalCPOKg), 0) & " kg/MT cpo": row = row + 1
+            .Cells(row, 1).Value = "Elect : " & Round(SafeDiv(weightedElectricity, totalCPOKg), 0) & " kWh/MT": row = row + 1
+            .Cells(row, 1).Value = "BE : " & Format(SafeDiv(weightedBE, totalCPOKg), "0.00") & " %": row = row + 1
+            .Cells(row, 1).Value = "PA : " & Format(SafeDiv(weightedPA, totalCPOKg), "0.00") & " %": row = row + 1
+            .Cells(row, 1).Value = "Quality": row = row + 1
+            .Cells(row, 1).Value = "CPO FFA : " & Format(SafeDiv(weightedCPOFFA, totalCPOKg), "0.00") & " %": row = row + 1
+            .Cells(row, 1).Value = "RBDPO FFA : " & Format(SafeDiv(weightedRBDPOFFA, totalCPOKg), "0.00") & " %": row = row + 1
+            .Cells(row, 1).Value = "Color RBDPO : " & Format(SafeDiv(weightedRBDPOCol, totalCPOKg), "0.0"): row = row + 1
+            .Cells(row, 1).Value = "PFAD purity : " & Format(SafeDiv(weightedPFADPurity, totalCPOKg), "0.00") & " %": row = row + 1
         End If
-    End If
+
+        ' Downtime selalu dicek, tapi hanya ditulis jika tidak kosong
+        If downtimeText <> "" Then
+            Dim arr() As String: arr = Split(downtimeText, vbCrLf)
+            Dim combinedText As String
+            combinedText = ""
+
+            For i = 0 To UBound(arr)
+                Dim cleaned As String
+                cleaned = Trim(arr(i))
+                If cleaned <> "" And cleaned <> "0" And cleaned <> "- 0" Then
+                    If combinedText <> "" Then
+                        combinedText = combinedText & ", " & cleaned
+                    Else
+                        combinedText = cleaned
+                    End If
+                End If
+            Next i
+
+            If combinedText <> "" Then
+                .Cells(row, 1).Value = combinedText
+                row = row + 1
+            End If
+        End If
+
         row = row + 1
     End With
-        row = row + 1
 End Sub
+
 
 Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
     Dim wb As Workbook, ws As Worksheet
@@ -294,7 +292,7 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
     Set ws = wb.Sheets(sheetSource)
     Set matchingRows = New Collection
 
-    lastRow = ws.Cells(ws.Rows.count, "A").End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
 Dim isEndOfMonth As Boolean
 Dim isStartOfMonth As Boolean
 
@@ -325,7 +323,7 @@ For i = 10 To lastRow
 Next i
 
 
-    If matchingRows.count = 0 Then
+    If matchingRows.Count = 0 Then
         wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
         wb.Close False
         Exit Sub
@@ -358,7 +356,7 @@ Next i
     
         ' Gabungkan semua downtimeText jadi satu string
     downtimeText = ""
-    If allDowntimes.count > 0 Then
+    If allDowntimes.Count > 0 Then
         Dim dt As Variant
         For Each dt In allDowntimes
             downtimeText = downtimeText & "- " & dt & vbCrLf
@@ -418,7 +416,7 @@ Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collectio
     Dim isEndOfMonth As Boolean, isStartOfMonth As Boolean
     Dim matches As New Collection
 
-    lastRow = ws.Cells(ws.Rows.count, 1).End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
     isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
     isStartOfMonth = (Day(Date) = 1)
 
@@ -449,7 +447,7 @@ End Function
 ' ------------------ UTIL ------------------
 Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
     Dim lastCol As Long, col As Long, h1 As String, h2 As String
-    lastCol = ws.Cells(h1Row, ws.Columns.count).End(xlToLeft).Column
+    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
     For col = 2 To lastCol
         h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
         h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
@@ -463,7 +461,7 @@ End Function
 
 Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
     Dim lastCol As Long, col As Long, h1 As String, h2 As String
-    lastCol = ws.Cells(h1Row, ws.Columns.count).End(xlToLeft).Column
+    lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
     For col = 2 To lastCol
         h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
         h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
@@ -491,7 +489,7 @@ Sub GenerateSCD_CBS_Report()
     On Error Resume Next
     Set wsDest = ThisWorkbook.Sheets(sheetName)
     If wsDest Is Nothing Then
-        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
         wsDest.Name = sheetName
         Debug.Print "Sheet baru dibuat: " & sheetName
     Else
@@ -577,7 +575,7 @@ Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date
         joinedProducts = JoinDictionaryKeys(dictProducts)
         joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
         
-        lastRow = wsDest.Cells(wsDest.Rows.count, 1).End(xlUp).row + 2
+        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
         wsDest.Cells(lastRow, 1).Value = currentLabel
         
         If inputTotal > 0 Then
@@ -608,7 +606,7 @@ Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
     Dim headerCombo As String
 
     ' Cari kolom terakhir di baris header
-    maxCol = ws.Cells(hdrRow1, ws.Columns.count).End(xlToLeft).Column
+    maxCol = ws.Cells(hdrRow1, ws.Columns.Count).End(xlToLeft).Column
 
     For i = 1 To maxCol
         ' Ambil header baris 1 & 2 (handle merge)
@@ -649,7 +647,7 @@ Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol A
     Dim prodName As String, descText As String, descText2 As String
     Dim cellDate As Variant
     
-    lastRow = ws.Cells(ws.Rows.count, prodCol).End(xlUp).row
+    lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).row
     
     If DebugMode Then
         Debug.Print "=== CollectData (" & ws.Name & ") ==="
@@ -715,10 +713,4 @@ Function JoinDictionaryKeys(dict As Object) As String
     Next
     JoinDictionaryKeys = result
 End Function
-
-
-
-
-
-
 
