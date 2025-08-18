@@ -117,6 +117,7 @@ Sub GenerateCombinedFullReport()
     If refFilePath <> "" Then
         Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
         Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
     Else
         wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
         currentRow = currentRow + 2
@@ -158,8 +159,6 @@ Sub GenerateCombinedFullReport()
 End Sub
 
 
-
-
 ' ==== Fungsi pembagian aman ====
 Private Function SafeDiv(numerator As Double, denominator As Double) As Double
     If denominator = 0 Or IsError(denominator) Or IsError(numerator) _
@@ -168,6 +167,21 @@ Private Function SafeDiv(numerator As Double, denominator As Double) As Double
         SafeDiv = 0
     Else
         SafeDiv = numerator / denominator
+    End If
+End Function
+
+' ==== Fungsi ambil angka aman ====
+Private Function SafeGetVal(ws As Worksheet, rowNum As Long, header1 As String, header2 As String, _
+                            headerRow1 As Long, headerRow2 As Long) As Double
+    Dim val As Variant
+    On Error Resume Next
+    val = GetCellVal(ws, rowNum, header1, header2, headerRow1, headerRow2)
+    On Error GoTo 0
+    
+    If IsError(val) Or IsEmpty(val) Or Not IsNumeric(val) Then
+        SafeGetVal = 0
+    Else
+        SafeGetVal = CDbl(val)
     End If
 End Function
 
@@ -219,19 +233,19 @@ Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel 
     End If
 
     For Each r In matchingRows
-        rowCPO = GetCellVal(ws, CLng(r), "input", "kg", 8, 9)
+        rowCPO = SafeGetVal(ws, CLng(r), "input", "kg", 8, 9)
         totalCPOKg = totalCPOKg + rowCPO
-        totalRBDPOKg = totalRBDPOKg + GetCellVal(ws, CLng(r), "rbd output", "kg", 8, 9)
-        totalPFADKg = totalPFADKg + GetCellVal(ws, CLng(r), "pfad output", "kg", 8, 9)
+        totalRBDPOKg = totalRBDPOKg + SafeGetVal(ws, CLng(r), "rbd output", "kg", 8, 9)
+        totalPFADKg = totalPFADKg + SafeGetVal(ws, CLng(r), "pfad output", "kg", 8, 9)
 
-        weightedSteam = weightedSteam + rowCPO * GetCellVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
-        weightedElectricity = weightedElectricity + rowCPO * GetCellVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
-        weightedBE = weightedBE + rowCPO * GetCellVal(ws, CLng(r), "bleaching earth", "%", 8, 9)
-        weightedPA = weightedPA + rowCPO * GetCellVal(ws, CLng(r), "phosphoric acid", "%", 8, 9)
-        weightedCPOFFA = weightedCPOFFA + rowCPO * GetCellVal(ws, CLng(r), "input", "ffa", 8, 9)
-        weightedRBDPOFFA = weightedRBDPOFFA + rowCPO * GetCellVal(ws, CLng(r), "rbd output", "%ffa", 8, 9)
-        weightedRBDPOCol = weightedRBDPOCol + rowCPO * GetCellVal(ws, CLng(r), "rbd output", "col", 8, 9)
-        weightedPFADPurity = weightedPFADPurity + rowCPO * GetCellVal(ws, CLng(r), "pfad output", "%ffa", 8, 9)
+        weightedSteam = weightedSteam + rowCPO * SafeGetVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
+        weightedElectricity = weightedElectricity + rowCPO * SafeGetVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
+        weightedBE = weightedBE + rowCPO * SafeGetVal(ws, CLng(r), "bleaching earth", "%", 8, 9)
+        weightedPA = weightedPA + rowCPO * SafeGetVal(ws, CLng(r), "phosphoric acid", "%", 8, 9)
+        weightedCPOFFA = weightedCPOFFA + rowCPO * SafeGetVal(ws, CLng(r), "input", "ffa", 8, 9)
+        weightedRBDPOFFA = weightedRBDPOFFA + rowCPO * SafeGetVal(ws, CLng(r), "rbd output", "%ffa", 8, 9)
+        weightedRBDPOCol = weightedRBDPOCol + rowCPO * SafeGetVal(ws, CLng(r), "rbd output", "col", 8, 9)
+        weightedPFADPurity = weightedPFADPurity + rowCPO * SafeGetVal(ws, CLng(r), "pfad output", "%ffa", 8, 9)
 
         Dim currentDT As String
         currentDT = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
