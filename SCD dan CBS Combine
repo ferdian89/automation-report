@@ -1,29 +1,35 @@
 ' ==== Fungsi umum ambil attachment dari email ====
-Function GetAttachmentFromEmail(senderName As String, fileName As String, Optional targetDate As Date) As String
+Function GetAttachmentFromEmail(senderName As String, fileNamePattern As String) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim savePath As String
     
-    If targetDate = 0 Then targetDate = Date - 1
-    savePath = Environ("TEMP") & "\" & fileName
-    
-    Set olApp = GetObject(, "Outlook.Application")
+    savePath = Environ("TEMP") & "\"
+
+    Set olApp = CreateObject("Outlook.Application")
     Set olNs = olApp.GetNamespace("MAPI")
-    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
     Set olItems = olFolder.Items
     olItems.Sort "ReceivedTime", True
-    
+
     For Each olMail In olItems
         If TypeName(olMail) = "MailItem" Then
-            If Int(olMail.ReceivedTime) = targetDate Then
-                If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+            ' Filter: hanya email hari ini
+            If Int(olMail.ReceivedTime) = Int(Date) Then
+                If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Or _
+                   InStr(1, olMail.SenderEmailAddress, senderName, vbTextCompare) > 0 Then
+                    
                     For Each olAtmt In olMail.Attachments
-                        If olAtmt.fileName = fileName Then
+                        If olAtmt.fileName Like fileNamePattern Or _
+                           InStr(1, olAtmt.fileName, fileNamePattern, vbTextCompare) > 0 Then
+                            
+                            savePath = savePath & olAtmt.fileName
                             On Error Resume Next
                             Kill savePath
                             On Error GoTo 0
                             olAtmt.SaveAsFile savePath
-                            Debug.Print "Attachment ditemukan: " & fileName & " dari " & senderName
+                            
+                            Debug.Print "Attachment ditemukan: " & olAtmt.fileName & " dari " & senderName
                             GetAttachmentFromEmail = savePath
                             Exit Function
                         End If
@@ -33,7 +39,7 @@ Function GetAttachmentFromEmail(senderName As String, fileName As String, Option
         End If
     Next
     
-    Debug.Print "Attachment TIDAK ditemukan: " & fileName & " dari " & senderName
+    Debug.Print "Attachment TIDAK ditemukan: pola '" & fileNamePattern & "' dari " & senderName & " tanggal " & Date
     GetAttachmentFromEmail = ""
 End Function
 
@@ -52,7 +58,7 @@ Sub GenerateSCD_CBS_Report()
     On Error Resume Next
     Set wsDest = ThisWorkbook.Sheets(sheetName)
     If wsDest Is Nothing Then
-        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.count))
+        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
         wsDest.Name = sheetName
         Debug.Print "Sheet baru dibuat: " & sheetName
     Else
@@ -62,17 +68,18 @@ Sub GenerateSCD_CBS_Report()
     
     ' Proses SCD dari Ferry
     ProcessPlantFile wsDest, _
-        GetAttachmentFromEmail("Ferry Hermansyah Lubis", "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", targetDate), _
+        GetAttachmentFromEmail("Ferry Hermansyah Lubis", "02.Daily Report SCD*Agustus 2025.xlsx"), _
         targetDate, "SCD/IE/HYD", True
     
     ' Proses CBS dari Putri
     ProcessPlantFile wsDest, _
-        GetAttachmentFromEmail("Putri Yolla Safitri", "02. Report Daily CBS HO Agustus 2025.xlsx", targetDate), _
+        GetAttachmentFromEmail("Putri Yolla Safitri", "02. Report Daily CBS HO*Agustus 2025.xlsx"), _
         targetDate, "CBS", True
     
     Debug.Print "=== Selesai GenerateSCD_CBS_Report ==="
     MsgBox "Output SCD, IE-FAT, HYD, dan CBS berhasil ditulis.", vbInformation
 End Sub
+
 
 
 ' ==== Proses file plant ====
@@ -138,7 +145,7 @@ Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date
         joinedProducts = JoinDictionaryKeys(dictProducts)
         joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
         
-        lastRow = wsDest.Cells(wsDest.Rows.count, 1).End(xlUp).Row + 2
+        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
         wsDest.Cells(lastRow, 1).Value = currentLabel
         
         If inputTotal > 0 Then
@@ -169,7 +176,7 @@ Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
     Dim headerCombo As String
 
     ' Cari kolom terakhir di baris header
-    maxCol = ws.Cells(hdrRow1, ws.Columns.count).End(xlToLeft).Column
+    maxCol = ws.Cells(hdrRow1, ws.Columns.Count).End(xlToLeft).Column
 
     For i = 1 To maxCol
         ' Ambil header baris 1 & 2 (handle merge)
@@ -210,7 +217,7 @@ Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol A
     Dim prodName As String, descText As String, descText2 As String
     Dim cellDate As Variant
     
-    lastRow = ws.Cells(ws.Rows.count, prodCol).End(xlUp).Row
+    lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).row
     
     If DebugMode Then
         Debug.Print "=== CollectData (" & ws.Name & ") ==="
