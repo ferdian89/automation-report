@@ -1,17 +1,27 @@
-' === Fungsi ambil file dari email Outlook berdasarkan nama pengirim & nama file ===
-Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
+' === Fungsi ambil file dari email Outlook (hari ini saja + debug) ===
+Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim senderName As Variant
+    Dim targetDate As Date
     
     GetAttachmentFromEmail = ""
+    targetDate = Date   ' hanya email hari ini
+    
+    Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
+    Debug.Print "Target file   : " & fileName
+    Debug.Print "Target date   : " & Format(targetDate, "yyyy-mm-dd")
+    Debug.Print "Save folder   : " & saveFolder
     
     ' Buka Outlook
     On Error Resume Next
     Set olApp = GetObject(, "Outlook.Application")
     If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
     On Error GoTo 0
-    If olApp Is Nothing Then Exit Function
+    If olApp Is Nothing Then
+        Debug.Print "Gagal buka Outlook!"
+        Exit Function
+    End If
     
     ' Ambil folder Inbox
     Set olNs = olApp.GetNamespace("MAPI")
@@ -19,16 +29,24 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
     Set olItems = olFolder.Items
     olItems.Sort "[ReceivedTime]", True
     
+    Debug.Print "Total items inbox: " & olItems.Count
+    
     ' Loop semua email
     For Each olMail In olItems
         If olMail.Class = 43 Then ' 43 = MailItem
             If Int(olMail.ReceivedTime) = targetDate Then
+                Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+                
                 ' Cek semua kemungkinan nama pengirim
                 For Each senderName In senderNames
                     If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                        Debug.Print "  -> Pengirim cocok: " & senderName
+                        
                         ' Loop semua lampiran
                         For Each olAtmt In olMail.Attachments
+                            Debug.Print "     Lampiran: " & olAtmt.fileName
                             If olAtmt.fileName = fileName Then
+                                Debug.Print "  -> File ditemukan dan disimpan!"
                                 olAtmt.SaveAsFile saveFolder & fileName
                                 GetAttachmentFromEmail = saveFolder & fileName
                                 Exit Function
@@ -39,6 +57,12 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
             End If
         End If
     Next olMail
+    
+    If GetAttachmentFromEmail = "" Then
+        Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
+    End If
+    
+    Debug.Print "=== SELESAI ==="
 End Function
 
 
@@ -51,7 +75,7 @@ Sub GenerateCombinedFullReport()
     Dim saveFolder As String
     
     ' Set tanggal target & folder simpan
-    targetDate = Date - 1
+    targetDate = Date - 1   ' sekarang HARI INI
     sheetName = Format(targetDate, "dd-mm-yyyy")
     saveFolder = Environ("TEMP") & "\"
     
@@ -71,21 +95,21 @@ Sub GenerateCombinedFullReport()
     
     ' === Ambil file dari email ===
     refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
-                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
     If refFilePath = "" Then _
         refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
-                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
     
     ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
     If ptrFilePath = "" Then _
         ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder, targetDate)
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
     
     scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
-                    "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", saveFolder, targetDate)
+                    "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", saveFolder)
     cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
-                    "02. Report Daily CBS HO Agustus 2025.xlsx", saveFolder, targetDate)
+                    "02. Report Daily CBS HO Agustus 2025.xlsx", saveFolder)
     
     Application.ScreenUpdating = False
     
@@ -132,6 +156,7 @@ Sub GenerateCombinedFullReport()
     
     MsgBox "Laporan gabungan lengkap selesai dibuat di sheet: " & wsDest.Name, vbInformation
 End Sub
+
 
 
 
@@ -549,7 +574,7 @@ Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date
                 currentLabel = "IE-FAT Plant": headerRow1 = 6: headerRow2 = 7: descCol1 = 48: descCol2 = 0
             
             Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*hyd*"
-                currentLabel = "Hydrogenation": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
+                currentLabel = "HYD Plant": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
             
             Case mode = "CBS" And LCase(xlWs.Name) Like "*scd-cbs*"
                 currentLabel = "SCD CBS Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 76: descCol2 = 92
