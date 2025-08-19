@@ -55,21 +55,26 @@ End Sub
 
 Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate As Date, ByRef row As Long)
     Dim col As Long, lastCol As Long
-    Dim lastRow As Long
+    Dim dataCol As Long
     Dim found As Boolean
     Dim targetText As String
-    Dim dataCol As Long
     Dim planValue As Variant, actualValue As Variant
-    Dim outputText As String
+    Dim curRow As Long
+    Dim machineName As String
+    Dim validMachines As Variant, m As Variant
+    Dim cellVal As String
     
-    ' --- ubah tanggal ke format "d - mmm" ---
+    ' --- daftar mesin yang diambil ---
+    validMachines = Array("UGS I", "Chemtech", "Chemtech 2", "UGS 6", "UGS II", "UGS III", "UGS V")
+    
+    ' --- format tanggal target ---
     targetText = Format(targetDate, "d - mmm")
     
-    ' --- cari kolom tanggal di row 5 ---
+    ' --- cari kolom tanggal di baris 5 ---
     lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
     found = False
     For col = 1 To lastCol
-        If ws.Cells(5, col).Text = targetText Then
+        If Trim(ws.Cells(5, col).Text) = targetText Then
             dataCol = col
             found = True
             Exit For
@@ -77,25 +82,61 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     Next col
     
     If Not found Then
-        wsTarget.Cells(row, 1).Value = "Marsho Plant - Tanggal tidak ditemukan"
+        wsTarget.Cells(row, 1).Value = "Marsho Plant - Tanggal tidak ditemukan (" & targetText & ")"
         row = row + 2
         Exit Sub
     End If
     
-' --- ambil angka terakhir di bawah Plan (row 6) ---
-lastRow = ws.Cells(ws.Rows.Count, dataCol).End(xlUp).row
-planValue = CLng(ws.Cells(lastRow, dataCol).Value)  ' ubah ke bulat
-
-' --- ambil angka terakhir di bawah Actual (row 7) ---
-lastRow = ws.Cells(ws.Rows.Count, dataCol + 1).End(xlUp).row
-actualValue = CLng(ws.Cells(lastRow, dataCol + 1).Value)  ' ubah ke bulat
-
-' --- buat teks output dan tulis di wsTarget ---
-wsTarget.Cells(row, 1).Value = "Marsho Plant"
-wsTarget.Cells(row + 1, 1).Value = "Plan/Actual = " & planValue & " / " & actualValue & " Ton"
-row = row + 2   ' naik 2 baris untuk output berikutnya
-
+    ' --- judul & header ---
+    wsTarget.Cells(row, 1).Value = "Marsho Plant (" & targetText & ")"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "Mesin"
+    wsTarget.Cells(row, 2).Value = "Plan"
+    wsTarget.Cells(row, 3).Value = "Actual"
+    row = row + 1
+    
+    machineName = ""
+    curRow = 6
+    
+    ' --- loop baris sampai akhir sheet ---
+    Do While curRow <= ws.Rows.Count
+        cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
+        
+        ' kalau baris ini adalah nama mesin valid
+        For Each m In validMachines
+            If StrComp(cellVal, m, vbTextCompare) = 0 Then
+                machineName = m
+                Exit For
+            End If
+        Next m
+        
+        ' kalau baris ini adalah "IN TONASE" dan ada mesin aktif
+        If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
+            planValue = val(ws.Cells(curRow, dataCol).Value)
+            actualValue = val(ws.Cells(curRow, dataCol + 1).Value)
+            
+            ' tulis ke target
+            wsTarget.Cells(row, 1).Value = machineName
+            wsTarget.Cells(row, 2).Value = planValue
+            wsTarget.Cells(row, 3).Value = actualValue
+            
+            row = row + 1
+            machineName = ""   ' reset supaya aman
+        End If
+        
+        curRow = curRow + 1
+        If curRow > 2000 Then Exit Do ' biar tidak infinite loop
+    Loop
+    
+    row = row + 1
 End Sub
+
+
+
+
+
+
+
 
 
 
