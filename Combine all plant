@@ -4,9 +4,16 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim senderName As Variant
     Dim targetDate As Date
+    Dim fullPath As String
+    Dim wbCheck As Workbook
     
     GetAttachmentFromEmail = ""
     targetDate = Date   ' hanya email hari ini
+    fullPath = saveFolder & fileName
+    
+    ' --- Folder tujuan
+    saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
+    fullPath = saveFolder & fileName
     
     Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
     Debug.Print "Target file   : " & fileName
@@ -46,9 +53,25 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
                         For Each olAtmt In olMail.Attachments
                             Debug.Print "     Lampiran: " & olAtmt.fileName
                             If olAtmt.fileName = fileName Then
-                                Debug.Print "  -> File ditemukan dan disimpan!"
-                                olAtmt.SaveAsFile saveFolder & fileName
-                                GetAttachmentFromEmail = saveFolder & fileName
+                                ' --- Hapus file lama jika ada
+                                If Dir(fullPath) <> "" Then
+                                    Kill fullPath
+                                End If
+                                
+                                ' --- Simpan attachment
+                                olAtmt.SaveAsFile fullPath
+                                Debug.Print "  -> File disimpan di: " & fullPath
+                                
+                                ' --- Break link jika file Excel
+                                If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
+                                    On Error Resume Next
+                                    Set wbCheck = Workbooks.Open(fullPath)
+                                    wbCheck.BreakLink Name:=fullPath, Type:=xlLinkTypeExcelLinks
+                                    wbCheck.Close SaveChanges:=True
+                                    On Error GoTo 0
+                                End If
+                                
+                                GetAttachmentFromEmail = fullPath
                                 Exit Function
                             End If
                         Next olAtmt
@@ -64,6 +87,7 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
     
     Debug.Print "=== SELESAI ==="
 End Function
+
 
 
 
