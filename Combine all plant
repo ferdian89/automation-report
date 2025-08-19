@@ -66,122 +66,147 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
 End Function
 
 
-' === Sub utama membuat laporan gabungan ===
+
+' === Sub utama membuat laporan gabungan multi-date ===
 Sub GenerateCombinedFullReport()
-Dim targetDate As Date, sheetName As String
-Dim wsDest As Worksheet, currentRow As Long
-Dim refFilePath As String, ptrFilePath As String
-Dim scdFilePath As String, cbsFilePath As String
-Dim bioFilePath As String
-Dim saveFolder As String
+    Dim targetDate As Date, sheetName As String
+    Dim wsDest As Worksheet, currentRow As Long
+    Dim refFilePath As String, ptrFilePath As String
+    Dim scdFilePath As String, cbsFilePath As String
+    Dim bioFilePath As String
+    Dim savePath As String, monthFile As String
+    Dim wbDest As Workbook
+    Dim i As Long
     
-    ' Set tanggal target & folder simpan
-    targetDate = Date - 1   ' sekarang HARI INI
-    sheetName = Format(targetDate, "dd-mm-yyyy")
-    saveFolder = Environ("TEMP") & "\"
+    ' === Tentukan lokasi penyimpanan ===
+    savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
     
-    ' === Siapkan sheet ===
-    On Error Resume Next
-    Set wsDest = ThisWorkbook.Sheets(sheetName)
-    If Not wsDest Is Nothing Then
-        Application.DisplayAlerts = False
-        wsDest.Delete
-        Application.DisplayAlerts = True
-    End If
-    On Error GoTo 0
+    ' === Loop 10 hari terakhir ===
+    For i = 1 To 10
+        targetDate = Date - i
+        sheetName = Format(targetDate, "dd-mm-yyyy")
+        
+        ' === Tentukan file bulanan ===
+        monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
+        
+        ' === Buka file bulanan, atau buat baru ===
+        On Error Resume Next
+        Set wbDest = Workbooks.Open(monthFile)
+        On Error GoTo 0
+        
+        If wbDest Is Nothing Then
+            Set wbDest = Workbooks.Add
+            Application.DisplayAlerts = False
+            wbDest.Sheets(1).Name = "Dummy"
+            Application.DisplayAlerts = True
+            wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
+        End If
+        
+        ' === Siapkan sheet tanggal ===
+        On Error Resume Next
+        Set wsDest = wbDest.Sheets(sheetName)
+        If Not wsDest Is Nothing Then
+            Application.DisplayAlerts = False
+            wsDest.Delete
+            Application.DisplayAlerts = True
+        End If
+        On Error GoTo 0
+        
+        Set wsDest = wbDest.Sheets.Add(After:=wbDest.Sheets(wbDest.Sheets.Count))
+        wsDest.Name = sheetName
+        currentRow = 1
+        
+        ' === Ambil file dari email (hanya sekali, bukan per loop kalau mau hemat waktu) ===
+        refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
+                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+        If refFilePath = "" Then _
+            refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
+                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+        
+        ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                        "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+        If ptrFilePath = "" Then _
+            ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                        "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+        
+        scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
+                        "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", Environ("TEMP") & "\")
+        cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
+                        "02. Report Daily CBS HO Agustus 2025.xlsx", Environ("TEMP") & "\")
+                        
+        ' === Biodiesel ===
+        bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                    "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
+        If bioFilePath = "" Then
+            bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                    "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
+        End If
+        
+        Application.ScreenUpdating = False
+        
+        ' === Refinery ===
+        If refFilePath <> "" Then
+            Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+            Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+            Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+        
+        ' === PTR ===
+        If ptrFilePath <> "" Then
+            Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+        
+        ' === Fractination ===
+        If refFilePath <> "" Then
+            Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
+            Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
+        End If
+        
+        ' === Biodiesel ===
+        If bioFilePath <> "" Then
+            Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
+            Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
+            Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
+            Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+        
+        ' === SCD ===
+        If scdFilePath <> "" Then
+            ProcessPlantFile wsDest, scdFilePath, targetDate, "SCD/IE/HYD", True
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File SCD tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+        
+        ' === CBS ===
+        If cbsFilePath <> "" Then
+            ProcessPlantFile wsDest, cbsFilePath, targetDate, "CBS", True
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File CBS tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+        
+        Application.ScreenUpdating = True
+        
+        ' === Simpan hasil ke file bulanan ===
+        wbDest.Save
+        wbDest.Close SaveChanges:=True
+        
+    Next i
     
-    Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
-    wsDest.Name = sheetName
-    currentRow = 1
-    
-    ' === Ambil file dari email ===
-    refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
-                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
-    If refFilePath = "" Then _
-        refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
-                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
-    
-    ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
-    If ptrFilePath = "" Then _
-        ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", saveFolder)
-    
-    scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
-                    "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", saveFolder)
-    cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
-                    "02. Report Daily CBS HO Agustus 2025.xlsx", saveFolder)
-                    
-                    ' === Biodiesel ===
-bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", saveFolder)
-
-If bioFilePath = "" Then
-    bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", saveFolder)
-End If
-    
-    Application.ScreenUpdating = False
-    
-    ' === Refinery ===
-    If refFilePath <> "" Then
-        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
-        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
-        Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
-    Else
-        wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
-        currentRow = currentRow + 2
-    End If
-    
-    ' === PTR ===
-    If ptrFilePath <> "" Then
-        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
-    Else
-        wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
-        currentRow = currentRow + 2
-    End If
-    
-    ' === Fractination ===
-    If refFilePath <> "" Then
-        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
-        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
-    End If
-    
-
-    
-    ' === Biodiesel ===
-    If bioFilePath <> "" Then
-        ' BIO Plant
-        Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
-                Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
-        Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
-        Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
-
-    
-    Else
-        wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
-        currentRow = currentRow + 2
-    End If
-    ' === SCD ===
-    If scdFilePath <> "" Then
-        ProcessPlantFile wsDest, scdFilePath, targetDate, "SCD/IE/HYD", True
-    Else
-        wsDest.Cells(currentRow, 1).Value = "File SCD tidak ditemukan"
-        currentRow = currentRow + 2
-    End If
-    
-    ' === CBS ===
-    If cbsFilePath <> "" Then
-        ProcessPlantFile wsDest, cbsFilePath, targetDate, "CBS", True
-    Else
-        wsDest.Cells(currentRow, 1).Value = "File CBS tidak ditemukan"
-        currentRow = currentRow + 2
-    End If
-    
-    Application.ScreenUpdating = True
-    
-    MsgBox "Laporan gabungan lengkap selesai dibuat di sheet: " & wsDest.Name, vbInformation
+    MsgBox "Laporan gabungan selesai dibuat untuk 10 hari terakhir.", vbInformation
 End Sub
+
+
 
 
 ' ==== Fungsi pembagian aman ====
@@ -357,46 +382,41 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
     Set matchingRows = New Collection
 
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
-Dim isEndOfMonth As Boolean
-Dim isStartOfMonth As Boolean
 
+    ' === Tentukan posisi tanggal ===
+    Dim isEndOfMonth As Boolean, isStartOfMonth As Boolean
+    isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+    isStartOfMonth = (Day(Date) = 1)
 
-isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
-isStartOfMonth = (Day(Date) = 1)
-
-For i = 10 To lastRow
-    If ws.Cells(i, 1).MergeCells Then
-        mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
-    Else
-        mergeVal = ws.Cells(i, 1).Value
-    End If
-
-    If mergeVal = targetDay Then
-        If isEndOfMonth Then
-            If i >= 150 Then
-                Debug.Print "? Akhir bulan, ambil baris >=150: " & i
-                matchingRows.Add i
-            Else
-                Debug.Print "? Akhir bulan, skip baris <150: " & i
-            End If
+    For i = 10 To lastRow
+        If ws.Cells(i, 1).MergeCells Then
+            mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
         Else
-            Debug.Print "? Tengah bulan, ambil semua baris: " & i
-            matchingRows.Add i
+            mergeVal = ws.Cells(i, 1).Value
         End If
-    End If
-Next i
 
+        If mergeVal = targetDay Then
+            If isEndOfMonth Then
+                If i >= 150 Then
+                    matchingRows.Add i
+                End If
+            Else
+                matchingRows.Add i
+            End If
+        End If
+    Next i
 
     If matchingRows.Count = 0 Then
-        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan": row = row + 2
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+        row = row + 2
         wb.Close False
         Exit Sub
     End If
 
-    ' Ambil data numerik utama dan kalkulasi tertimbang
+    ' === Ambil data utama ===
     Dim allDowntimes As Collection
     Set allDowntimes = New Collection
-    
+
     For Each r In matchingRows
         Dim inputRBDPO As Double
         inputRBDPO = GetCellVal(ws, CLng(r), "rbdpo input", "kg", 8, 9)
@@ -408,70 +428,55 @@ Next i
         weightedElectricity = weightedElectricity + inputRBDPO * GetCellVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
         weightedWater = weightedWater + inputRBDPO * GetCellVal(ws, CLng(r), "water", "m3/mt", 8, 9)
 
-    ' Ambil semua downtime yang valid
+        ' Ambil downtime
         Dim currentDowntime As String
         currentDowntime = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
         If currentDowntime <> "" Then
-            On Error Resume Next ' untuk hindari duplikat
+            On Error Resume Next
             allDowntimes.Add currentDowntime, CStr(currentDowntime)
             On Error GoTo 0
         End If
     Next r
-    
-        ' Gabungkan semua downtimeText jadi satu string
+
+    ' Gabungkan downtime jadi 1 string
     downtimeText = ""
     If allDowntimes.Count > 0 Then
         Dim dt As Variant
         For Each dt In allDowntimes
-            downtimeText = downtimeText & "- " & dt & vbCrLf
+            If downtimeText <> "" Then
+                downtimeText = downtimeText & ", "
+            End If
+            downtimeText = downtimeText & dt
         Next dt
     End If
 
+    ' === Tulis ke target ===
     With wsTarget
-        .Cells(row, 1).Value = plantLabel: row = row + 1
-        .Cells(row, 1).Value = "Quantity": row = row + 1
-        .Cells(row, 1).Value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
-        .Cells(row, 1).Value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
-        .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
-    
+        .Cells(row, 1).Value = plantLabel
+        row = row + 1
+
         If rbdpoKg > 0 Then
+            .Cells(row, 1).Value = "Quantity": row = row + 1
+            .Cells(row, 1).Value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
+            .Cells(row, 1).Value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+            .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
             .Cells(row, 1).Value = "Steam : " & Format(weightedSteam / rbdpoKg, "0.00") & " kg/MT": row = row + 1
             .Cells(row, 1).Value = "Elect : " & Format(weightedElectricity / rbdpoKg, "0.00") & " kwh/MT": row = row + 1
             .Cells(row, 1).Value = "Water : " & Format(weightedWater / rbdpoKg, "0.00") & " m3/MT RBDPO": row = row + 1
-        Else
-            .Cells(row, 1).Value = "Steam : 0": row = row + 1
-            .Cells(row, 1).Value = "Elect : 0": row = row + 1
-            .Cells(row, 1).Value = "Water : 0": row = row + 1
         End If
-    
-    ' Gabungkan downtimeText dalam satu baris, tanpa label "Downtime:"
-    If downtimeText <> "" Then
-        Dim arr() As String: arr = Split(downtimeText, vbCrLf)
-        Dim combinedText As String
-        combinedText = ""
 
-        For i = 0 To UBound(arr)
-            Dim cleaned As String
-            cleaned = Trim(arr(i))
-
-            If cleaned <> "" And cleaned <> "0" And cleaned <> "- 0" Then
-                If combinedText <> "" Then
-                    combinedText = combinedText & ", " & cleaned
-                Else
-                    combinedText = cleaned
-                End If
-            End If
-        Next i
-
-        If combinedText <> "" Then
-            .Cells(row, 1).Value = combinedText
+        ' Tulis downtime (selalu tulis, meskipun RBDPO=0)
+        If downtimeText <> "" Then
+            .Cells(row, 1).Value = downtimeText
             row = row + 1
         End If
-    End If
-    row = row + 1
+
+        row = row + 1
     End With
+
     wb.Close SaveChanges:=False
 End Sub
+
 
 
 Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collection
