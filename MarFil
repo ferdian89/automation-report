@@ -186,8 +186,11 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
         
         curRow = curRow + 1
     Loop
+       row = row + 1
     
     ' --- summary running dan total ---
+    wsTarget.Cells(row, 1).Value = "Marsho Plant"
+    row = row + 1
     wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " mesin"
     row = row + 1
     wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
