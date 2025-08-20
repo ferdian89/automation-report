@@ -67,14 +67,18 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     Dim machineName As String
     Dim validMachines As Variant, m As Variant
     Dim cellVal As String
+    Dim cellComment As String
     
-    ' --- tambahan variabel untuk running dan total ---
+    ' --- tambahan variabel untuk running, total, dan tracking eff terendah ---
     Dim runningCount As Long, totalMachines As Long
     Dim totalPlan As Double, totalActual As Double
+    Dim minPerf As Double, minMachine As String, minComment As String
     
     ' --- daftar mesin yang diambil ---
     validMachines = Array("UGS I", "Chemtech", "Chemtech 2", "UGS 6", "UGS II", "UGS III", "UGS V")
     totalMachines = UBound(validMachines) - LBound(validMachines) + 1
+    
+    minPerf = 999999    ' nilai awal besar supaya bisa dibanding
     
     ' --- format tanggal target ---
     targetText = Format(targetDate, "d - mmm")
@@ -103,6 +107,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     wsTarget.Cells(row, 2).Value = "Plan"
     wsTarget.Cells(row, 3).Value = "Actual"
     wsTarget.Cells(row, 4).Value = "Performance (%)"
+    wsTarget.Cells(row, 5).Value = "Comment"
     row = row + 1
     
     machineName = ""
@@ -133,20 +138,50 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
                 perfValue = 0
             End If
             
+            ' --- ambil comment dari baris produk (di antara nama mesin dan IN TONASE) ---
+            cellComment = ""
+            Dim r As Long
+            If perfValue <= 100 Then
+                r = curRow - 1
+                Do While r > 1
+                    If StrComp(Trim(ws.Cells(r, 1).MergeArea.Cells(1, 1).Text), machineName, vbTextCompare) = 0 Then
+                        Exit Do
+                    End If
+                    If Not ws.Cells(r, dataCol + 1).Comment Is Nothing Then
+                        Dim fullComment As String, words() As String
+                        fullComment = Trim(ws.Cells(r, dataCol + 1).Comment.Text)
+                        words = Split(fullComment, " ")
+                        If UBound(words) <= 2 Then   ' max 3 kata
+                            If cellComment <> "" Then cellComment = cellComment & "; "
+                            cellComment = cellComment & fullComment
+                        End If
+                    End If
+                    r = r - 1
+                Loop
+            End If
+            
             ' tulis ke target
             wsTarget.Cells(row, 1).Value = machineName
             wsTarget.Cells(row, 2).Value = planValue
             wsTarget.Cells(row, 3).Value = actualValue
             wsTarget.Cells(row, 4).Value = perfValue
             wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+            wsTarget.Cells(row, 5).Value = cellComment
             
             ' hitung running dan total
             If actualValue > 0 Then runningCount = runningCount + 1
             totalPlan = totalPlan + planValue
             totalActual = totalActual + actualValue
             
+            ' --- cek minimum perf (exclude 0) ---
+            If perfValue > 0 And perfValue < minPerf Then
+                minPerf = perfValue
+                minMachine = machineName
+                minComment = cellComment
+            End If
+            
             row = row + 1
-            machineName = ""   ' reset supaya aman
+            machineName = ""
         End If
         
         curRow = curRow + 1
@@ -158,8 +193,22 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
                                    Format(Round(totalPlan, 0), "0") & " / " & _
                                    Format(Round(totalActual, 0), "0") & " Ton"
-    row = row + 2
+    row = row + 1
+    
+    ' --- tampilkan eff terendah ---
+    If minPerf < 999999 Then
+        wsTarget.Cells(row, 1).Value = "eff " & minMachine & ", " & _
+                                       Format(minPerf, "0.00") & "%, " & minComment
+        row = row + 2
+    Else
+        row = row + 2
+    End If
 End Sub
+
+
+
+
+
 
 
 
