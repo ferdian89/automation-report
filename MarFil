@@ -68,8 +68,13 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     Dim validMachines As Variant, m As Variant
     Dim cellVal As String
     
+    ' --- tambahan variabel untuk running dan total ---
+    Dim runningCount As Long, totalMachines As Long
+    Dim totalPlan As Double, totalActual As Double
+    
     ' --- daftar mesin yang diambil ---
     validMachines = Array("UGS I", "Chemtech", "Chemtech 2", "UGS 6", "UGS II", "UGS III", "UGS V")
+    totalMachines = UBound(validMachines) - LBound(validMachines) + 1
     
     ' --- format tanggal target ---
     targetText = Format(targetDate, "d - mmm")
@@ -104,7 +109,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     curRow = 6
     lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
     
-    ' --- loop baris sampai akhir sheet (lebih efisien) ---
+    ' --- loop baris sampai akhir sheet ---
     Do While curRow <= lastRow
         cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
         
@@ -121,7 +126,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
             planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
             actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
             
-                        ' hitung performance (%)
+            ' hitung performance (%)
             If planValue <> 0 Then
                 perfValue = Round((actualValue / planValue) * 100, 2)
             Else
@@ -133,9 +138,12 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
             wsTarget.Cells(row, 2).Value = planValue
             wsTarget.Cells(row, 3).Value = actualValue
             wsTarget.Cells(row, 4).Value = perfValue
-            
-            ' format kolom performance jadi persen
             wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+            
+            ' hitung running dan total
+            If actualValue > 0 Then runningCount = runningCount + 1
+            totalPlan = totalPlan + planValue
+            totalActual = totalActual + actualValue
             
             row = row + 1
             machineName = ""   ' reset supaya aman
@@ -144,8 +152,16 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
         curRow = curRow + 1
     Loop
     
+    ' --- summary running dan total ---
+    wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " mesin"
     row = row + 1
+    wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
+                                   Format(Round(totalPlan, 0), "0") & " / " & _
+                                   Format(Round(totalActual, 0), "0") & " Ton"
+    row = row + 2
 End Sub
+
+
 
 
 Function RoundNormal(ByVal x As Double, Optional digits As Long = 0) As Double
