@@ -9,11 +9,12 @@ Sub GenerateMarsho()
 
 
     ' Tentukan tanggal proses (kemarin)
-    targetDate = Date
+    targetDate = Date - 1
     targetDay = Day(targetDate)
     
     ' Ambil file dari email hari ini
-    filePath = GetAttachment_BIO(targetDate)
+    filePath = GetAttachment_BIO()
+    Debug.Print "File path: "; filePath
     If filePath = "" Then
         MsgBox "File BIO tidak ditemukan dari email hari ini.", vbExclamation
         Exit Sub
@@ -65,6 +66,50 @@ Sub GenerateMarsho()
     MsgBox "? Laporan aktual planning untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
 End Sub
 
+Function GetAttachment_BIO() As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim baseName As String, savePath As String
+    Dim i As Long
+    Dim todayDate As Date
+    
+    todayDate = Date
+    
+    baseName = "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx"
+    savePath = Environ("TEMP") & "\BIO_" & Format(todayDate, "yyyymmdd") & ".xlsx"
+    
+    ' kalau file sudah ada ? hapus dulu supaya bisa replace
+    If Dir(savePath) <> "" Then
+        Kill savePath
+    End If
+    
+    ' --- ambil email hari ini ---
+    Set olApp = CreateObject("Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) 'Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
+    
+    For i = 1 To olItems.Count
+        Set olMail = olItems.Item(i)
+        If olMail.Class = 43 Then ' olMailItem
+            If Int(olMail.ReceivedTime) = todayDate Then
+                If InStr(1, olMail.senderName, "Jessica Silvera", vbTextCompare) > 0 Or _
+                   InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
+                    For Each olAtmt In olMail.Attachments
+                        If olAtmt.fileName = baseName Then
+                            olAtmt.SaveAsFile savePath
+                            GetAttachment_BIO = savePath
+                            Exit Function
+                        End If
+                    Next olAtmt
+                End If
+            End If
+        End If
+    Next i
+    
+    GetAttachment_BIO = ""
+End Function
 
 Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate As Date, ByRef row As Long)
     Dim col As Long, lastCol As Long
@@ -380,40 +425,6 @@ End Function
 
 
 
-Function GetAttachment_BIO(targetDate As Date) As String
-    Dim olApp As Object, olNs As Object, olFolder As Object
-    Dim olItems As Object, olMail As Object, olAtmt As Object
-    Dim baseName As String, savePath As String
-    Dim i As Long
-    
-    baseName = "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx"
-    savePath = Environ("TEMP") & "\BIO_" & Format(Date, "yyyymmdd") & ".xlsx"
-    
-    Set olApp = CreateObject("Outlook.Application")
-    Set olNs = olApp.GetNamespace("MAPI")
-    Set olFolder = olNs.GetDefaultFolder(6)
-    Set olItems = olFolder.Items
-    olItems.Sort "[ReceivedTime]", True
-    
-    For i = 1 To olItems.Count
-        Set olMail = olItems.Item(i)
-        If olMail.Class = 43 Then
-            If Int(olMail.ReceivedTime) >= targetDate And olMail.ReceivedTime < targetDate + 1 Then
-                If InStr(1, olMail.senderName, "Jessica Silvera", vbTextCompare) > 0 Or _
-                   InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
-                    For Each olAtmt In olMail.Attachments
-                        If olAtmt.fileName = baseName Then
-                            olAtmt.SaveAsFile savePath
-                            GetAttachment_BIO = savePath
-                            Exit Function
-                        End If
-                    Next olAtmt
-                End If
-            End If
-        End If
-    Next i
-    GetAttachment_BIO = ""
-End Function
 
 
 Function GetCellVal(ws As Worksheet, targetRow As Long, _
