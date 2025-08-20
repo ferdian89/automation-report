@@ -5,13 +5,17 @@ Sub GenerateMarsho()
     Dim startRow As Long
     Dim wb As Workbook
     Dim ws As Worksheet
+     Dim localFolder As String
+     Dim fileName As String
 
     ' Tentukan tanggal proses (kemarin)
-    targetDate = Date - 1
+    targetDate = Date - 3
     targetDay = Day(targetDate)
     
     ' Ambil file dari email hari ini
-    filePath = GetAttachment_BIO(targetDate)
+    localFolder = "C:\Users\17000574\Desktop\"
+    fileName = "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx"
+    filePath = localFolder & fileName
     If filePath = "" Then
         MsgBox "File BIO tidak ditemukan dari email hari ini.", vbExclamation
         Exit Sub
@@ -58,8 +62,8 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     Dim dataCol As Long
     Dim found As Boolean
     Dim targetText As String
-    Dim planValue As Variant, actualValue As Variant
-    Dim curRow As Long
+    Dim planValue As Variant, actualValue As Variant, perfValue As Variant
+    Dim curRow As Long, lastRow As Long
     Dim machineName As String
     Dim validMachines As Variant, m As Variant
     Dim cellVal As String
@@ -93,13 +97,15 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     wsTarget.Cells(row, 1).Value = "Mesin"
     wsTarget.Cells(row, 2).Value = "Plan"
     wsTarget.Cells(row, 3).Value = "Actual"
+    wsTarget.Cells(row, 4).Value = "Performance (%)"
     row = row + 1
     
     machineName = ""
     curRow = 6
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
     
-    ' --- loop baris sampai akhir sheet ---
-    Do While curRow <= ws.Rows.Count
+    ' --- loop baris sampai akhir sheet (lebih efisien) ---
+    Do While curRow <= lastRow
         cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
         
         ' kalau baris ini adalah nama mesin valid
@@ -109,37 +115,42 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
                 Exit For
             End If
         Next m
-        
+
         ' kalau baris ini adalah "IN TONASE" dan ada mesin aktif
         If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
-            planValue = val(ws.Cells(curRow, dataCol).Value)
-            actualValue = val(ws.Cells(curRow, dataCol + 1).Value)
+            planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
+            actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
+            
+                        ' hitung performance (%)
+            If planValue <> 0 Then
+                perfValue = Round((actualValue / planValue) * 100, 2)
+            Else
+                perfValue = 0
+            End If
             
             ' tulis ke target
             wsTarget.Cells(row, 1).Value = machineName
             wsTarget.Cells(row, 2).Value = planValue
             wsTarget.Cells(row, 3).Value = actualValue
+            wsTarget.Cells(row, 4).Value = perfValue
+            
+            ' format kolom performance jadi persen
+            wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
             
             row = row + 1
             machineName = ""   ' reset supaya aman
         End If
         
         curRow = curRow + 1
-        If curRow > 2000 Then Exit Do ' biar tidak infinite loop
     Loop
     
     row = row + 1
 End Sub
 
 
-
-
-
-
-
-
-
-
+Function RoundNormal(ByVal x As Double, Optional digits As Long = 0) As Double
+    RoundNormal = Round(x, digits)
+End Function
 
 
 
@@ -161,11 +172,11 @@ Function GetAttachment_BIO(targetDate As Date) As String
     For i = 1 To olItems.Count
         Set olMail = olItems.Item(i)
         If olMail.Class = 43 Then
-            If Int(olMail.ReceivedTime) = Int(Date) Then
+            If Int(olMail.ReceivedTime) >= targetDate And olMail.ReceivedTime < targetDate + 1 Then
                 If InStr(1, olMail.senderName, "Jessica Silvera", vbTextCompare) > 0 Or _
                    InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
                     For Each olAtmt In olMail.Attachments
-                        If olAtmt.Filename = baseName Then
+                        If olAtmt.fileName = baseName Then
                             olAtmt.SaveAsFile savePath
                             GetAttachment_BIO = savePath
                             Exit Function
