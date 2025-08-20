@@ -5,17 +5,15 @@ Sub GenerateMarsho()
     Dim startRow As Long
     Dim wb As Workbook
     Dim ws As Worksheet
-     Dim localFolder As String
-     Dim fileName As String
+    Dim wsFill As Worksheet
+
 
     ' Tentukan tanggal proses (kemarin)
-    targetDate = Date - 3
+    targetDate = Date
     targetDay = Day(targetDate)
     
     ' Ambil file dari email hari ini
-    localFolder = "C:\Users\17000574\Desktop\"
-    fileName = "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx"
-    filePath = localFolder & fileName
+    filePath = GetAttachment_BIO(targetDate)
     If filePath = "" Then
         MsgBox "File BIO tidak ditemukan dari email hari ini.", vbExclamation
         Exit Sub
@@ -38,22 +36,188 @@ Sub GenerateMarsho()
     
     ' --- Buka workbook sumber ---
     Set wb = Workbooks.Open(filePath)
+    
+    ' --- Jalankan Marsho ---
     On Error Resume Next
     Set ws = wb.Sheets("Marunda-Marsho")
-    If ws Is Nothing Then
-        MsgBox "Sheet 'Marunda-Marsho' tidak ditemukan di file sumber.", vbExclamation
-        wb.Close False
-        Exit Sub
-    End If
     On Error GoTo 0
+    If Not ws Is Nothing Then
+        GenerateMarshoPlantReport ws, wsTarget, targetDate, startRow
+    Else
+        wsTarget.Cells(startRow, 1).Value = "Sheet 'Marunda-Marsho' tidak ditemukan."
+        startRow = startRow + 2
+    End If
     
-    ' --- Jalankan GenerateMarshoPlantReport dengan worksheet ---
-    GenerateMarshoPlantReport ws, wsTarget, targetDate, startRow
+    ' --- Jalankan Filling ---
+    On Error Resume Next
+    Set wsFill = wb.Sheets("Marunda-Oil")
+    On Error GoTo 0
+    If Not wsFill Is Nothing Then
+        GenerateFillingPlantReport wsFill, wsTarget, targetDate, startRow
+    Else
+        wsTarget.Cells(startRow, 1).Value = "Sheet 'Marunda-Oil' tidak ditemukan."
+        startRow = startRow + 2
+    End If
     
     ' Tutup workbook sumber
     wb.Close False
 
     MsgBox "? Laporan aktual planning untuk tanggal " & Format(targetDate, "dd MMM yyyy") & " berhasil dibuat!", vbInformation
+End Sub
+
+
+Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate As Date, ByRef row As Long)
+    Dim col As Long, lastCol As Long
+    Dim dataCol As Long
+    Dim found As Boolean
+    Dim targetText As String
+    Dim planValue As Variant, actualValue As Variant, perfValue As Variant
+    Dim curRow As Long, lastRow As Long
+    Dim machineName As String
+    Dim validMachines As Variant, m As Variant
+    Dim cellVal As String
+    Dim cellComment As String
+    
+    ' --- tambahan variabel untuk running, total, dan tracking eff terendah ---
+    Dim runningCount As Long, totalMachines As Long
+    Dim totalPlan As Double, totalActual As Double
+    Dim minPerf As Double, minMachine As String, minComment As String
+    
+    ' --- daftar mesin Filling Plant ---
+    validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 5 (ASRS)", _
+                          "Thimonier 7", "Thimonier 9", "Thimonier 10", "Emec - 2L -5L", _
+                          "Emec - 18L (16 Nozzle)", "Emec -  BIB 18 L (I)", "Emec -  BIB 18 L (II)", _
+                          "Emec -  BIB 18 L (III)", "SERAC")
+    totalMachines = UBound(validMachines) - LBound(validMachines) + 1
+    
+    minPerf = 999999
+    
+    ' --- format tanggal target ---
+    targetText = Format(targetDate, "d - mmm")
+    
+    ' --- cari kolom tanggal di baris 5 ---
+    lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+    found = False
+    For col = 1 To lastCol
+        If Trim(ws.Cells(5, col).Text) = targetText Then
+            dataCol = col
+            found = True
+            Exit For
+        End If
+    Next col
+    
+    If Not found Then
+        wsTarget.Cells(row, 1).Value = "Filling Plant - Tanggal tidak ditemukan (" & targetText & ")"
+        row = row + 2
+        Exit Sub
+    End If
+    
+    ' --- judul & header ---
+    wsTarget.Cells(row, 1).Value = "Filling Plant (" & targetText & ")"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "Mesin"
+    wsTarget.Cells(row, 2).Value = "Plan"
+    wsTarget.Cells(row, 3).Value = "Actual"
+    wsTarget.Cells(row, 4).Value = "Performance (%)"
+    wsTarget.Cells(row, 5).Value = "Comment"
+    row = row + 1
+    
+    machineName = ""
+    curRow = 6
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+    
+    ' --- loop baris sampai akhir sheet ---
+    Do While curRow <= lastRow
+        cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
+        
+        ' cek apakah baris ini nama mesin valid
+        For Each m In validMachines
+            If StrComp(cellVal, m, vbTextCompare) = 0 Then
+                machineName = m
+                Exit For
+            End If
+        Next m
+        
+        ' kalau baris ini adalah "IN TONASE" dan ada mesin aktif
+        If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
+            planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
+            actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
+            
+            ' hitung performance
+            If planValue <> 0 Then
+                perfValue = Round((actualValue / planValue) * 100, 2)
+            Else
+                perfValue = 0
+            End If
+            
+            ' --- ambil comment ---
+            cellComment = ""
+            Dim r As Long
+            If perfValue <= 100 Then
+                r = curRow - 1
+                Do While r > 1
+                    If StrComp(Trim(ws.Cells(r, 1).MergeArea.Cells(1, 1).Text), machineName, vbTextCompare) = 0 Then
+                        Exit Do
+                    End If
+                    If Not ws.Cells(r, dataCol + 1).Comment Is Nothing Then
+                        Dim fullComment As String, words() As String
+                        fullComment = Trim(ws.Cells(r, dataCol + 1).Comment.Text)
+                        words = Split(fullComment, " ")
+                        If UBound(words) <= 2 Then
+                            If cellComment <> "" Then cellComment = cellComment & "; "
+                            cellComment = cellComment & fullComment
+                        End If
+                    End If
+                    r = r - 1
+                Loop
+            End If
+            
+            ' tulis hasil ke target sheet
+            wsTarget.Cells(row, 1).Value = machineName
+            wsTarget.Cells(row, 2).Value = planValue
+            wsTarget.Cells(row, 3).Value = actualValue
+            wsTarget.Cells(row, 4).Value = perfValue
+            wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+            wsTarget.Cells(row, 5).Value = cellComment
+            
+            ' hitung running dan total
+            If actualValue > 0 Then runningCount = runningCount + 1
+            totalPlan = totalPlan + planValue
+            totalActual = totalActual + actualValue
+            
+            ' cek perf minimum
+            If perfValue > 0 And perfValue < minPerf Then
+                minPerf = perfValue
+                minMachine = machineName
+                minComment = cellComment
+            End If
+            
+            row = row + 1
+            machineName = ""
+        End If
+        
+        curRow = curRow + 1
+    Loop
+    
+    row = row + 1
+    
+    ' --- summary ---
+    wsTarget.Cells(row, 1).Value = "Filling Plant"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " mesin"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
+                                   Format(Round(totalPlan, 0), "0") & " / " & _
+                                   Format(Round(totalActual, 0), "0") & " Ton"
+    row = row + 1
+    
+    If minPerf < 999999 Then
+        wsTarget.Cells(row, 1).Value = "eff " & minMachine & ", " & _
+                                       Format(minPerf, "0.00") & "%, " & minComment
+        row = row + 2
+    Else
+        row = row + 2
+    End If
 End Sub
 
 
@@ -207,12 +371,6 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
         row = row + 2
     End If
 End Sub
-
-
-
-
-
-
 
 
 
