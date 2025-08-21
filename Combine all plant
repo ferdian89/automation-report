@@ -199,7 +199,15 @@ Sub GenerateCombinedFullReport()
             Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
         End If
         
-        ' === Biodiesel ===
+
+        
+    ' --- Panggil plant HO ---
+    Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
+    
+    ' --- Panggil plant CBS ---
+    Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
+        
+                ' === Biodiesel ===
         If bioFilePath <> "" Then
             Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
             Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
@@ -207,22 +215,6 @@ Sub GenerateCombinedFullReport()
             Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
         Else
             wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-        
-        ' === SCD ===
-        If scdFilePath <> "" Then
-            ProcessPlantFile wsDest, scdFilePath, targetDate, "SCD/IE/HYD", True
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File SCD tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-        
-        ' === CBS ===
-        If cbsFilePath <> "" Then
-            ProcessPlantFile wsDest, cbsFilePath, targetDate, "CBS", True
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File CBS tidak ditemukan"
             currentRow = currentRow + 2
         End If
         
@@ -576,50 +568,15 @@ End Function
 
 
 
-' ==== Fungsi utama ====
-Sub GenerateSCD_CBS_Report()
-    Dim targetDate As Date, sheetName As String
-    Dim wsDest As Worksheet
-    
-    targetDate = Date - 1
-    sheetName = Format(targetDate, "dd-mm-yyyy")
-    Debug.Print "=== GenerateSCD_CBS_Report ==="
-    Debug.Print "Tanggal target: " & sheetName
-    
-    ' Siapkan sheet output
-    On Error Resume Next
-    Set wsDest = ThisWorkbook.Sheets(sheetName)
-    If wsDest Is Nothing Then
-        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
-        wsDest.Name = sheetName
-        Debug.Print "Sheet baru dibuat: " & sheetName
-    Else
-        Debug.Print "Sheet ditemukan: " & sheetName
-    End If
-    On Error GoTo 0
-    
-    ' Proses SCD dari Ferry
-    ProcessPlantFile wsDest, _
-        GetAttachmentFromEmail("Ferry Hermansyah Lubis", "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", targetDate), _
-        targetDate, "SCD/IE/HYD", True
-    
-    ' Proses CBS dari Putri
-    ProcessPlantFile wsDest, _
-        GetAttachmentFromEmail("Putri Yolla Safitri", "02. Report Daily CBS HO Agustus 2025.xlsx", targetDate), _
-        targetDate, "CBS", True
-    
-    Debug.Print "=== Selesai GenerateSCD_CBS_Report ==="
-    MsgBox "Output SCD, IE-FAT, HYD, dan CBS berhasil ditulis.", vbInformation
-End Sub
+' ==== Proses file plant (pakai ByRef row) ====
+Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date, mode As String, _
+                     ByRef row As Long, Optional DebugMode As Boolean = False)
 
-
-' ==== Proses file plant ====
-Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date, mode As String, Optional DebugMode As Boolean = False)
     Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
     Dim dictProducts As Object, dictDescriptions As Object
     Dim prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long
     Dim foundProdCol As Boolean, foundInputCol As Boolean
-    Dim inputTotal As Double, lastRow As Long
+    Dim inputTotal As Double
     Dim joinedProducts As String, joinedDescriptions As String
     Dim currentLabel As String, headerRow1 As Long, headerRow2 As Long
     
@@ -650,7 +607,7 @@ Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date
                 currentLabel = "IE-FAT Plant": headerRow1 = 6: headerRow2 = 7: descCol1 = 48: descCol2 = 0
             
             Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*hyd*"
-                currentLabel = "HYD Plant": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
+                currentLabel = "Hydrogenation": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
             
             Case mode = "CBS" And LCase(xlWs.Name) Like "*scd-cbs*"
                 currentLabel = "SCD CBS Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 76: descCol2 = 92
@@ -670,25 +627,33 @@ Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date
         Call FindColumns(xlWs, headerRow1, headerRow2, prodCol, foundProdCol, inputCol, foundInputCol)
         
         ' --- Kumpulkan data ---
-        CollectData xlWs, targetDate, prodCol, inputCol, descCol1, descCol2, dictProducts, dictDescriptions, inputTotal, foundProdCol, foundInputCol, DebugMode
+        CollectData xlWs, targetDate, prodCol, inputCol, descCol1, descCol2, _
+                    dictProducts, dictDescriptions, inputTotal, foundProdCol, foundInputCol, DebugMode
         
-        ' --- Output ke sheet utama ---
+        ' --- Output ke sheet utama (pakai row ByRef) ---
         joinedProducts = JoinDictionaryKeys(dictProducts)
         joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
         
-        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
-        wsDest.Cells(lastRow, 1).Value = currentLabel
+        wsDest.Cells(row, 1).Value = currentLabel
+        row = row + 1
         
         If inputTotal > 0 Then
-            wsDest.Cells(lastRow + 1, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
-            wsDest.Cells(lastRow + 2, 1).Value = "Input Processed : " & Format(inputTotal / 1000, "0") & " Ton"
+            wsDest.Cells(row, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
+            row = row + 1
+            wsDest.Cells(row, 1).Value = "Input Processed : " & Format(inputTotal / 1000, "0") & " Ton"
+            row = row + 1
             If joinedDescriptions <> "" Then
-                wsDest.Cells(lastRow + 3, 1).Value = "" & joinedDescriptions
+                wsDest.Cells(row, 1).Value = joinedDescriptions
+                row = row + 1
             End If
         Else
-            wsDest.Cells(lastRow + 1, 1).Value = "Stop Plant"
-            wsDest.Cells(lastRow + 2, 1).Value = "Fit to PPIC Planning"
+            wsDest.Cells(row, 1).Value = "Stop Plant"
+            row = row + 1
+            wsDest.Cells(row, 1).Value = "Fit to PPIC Planning"
+            row = row + 1
         End If
+        
+        row = row + 1   ' baris kosong antar plant
         
 NextSheet:
     Next xlWs
@@ -696,7 +661,6 @@ NextSheet:
     xlWb.Close False
     xlApp.Quit
 End Sub
-
 
 Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
                 ByRef prodCol As Long, ByRef foundProd As Boolean, _
@@ -738,82 +702,73 @@ Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
 End Sub
 
 
+' ==== Ambil data produk & input (versi perbaikan) ====
+Sub CollectData(ws As Object, targetDate As Date, prodCol As Long, inputCol As Long, _
+                descCol1 As Long, descCol2 As Long, _
+                dictProducts As Object, dictDescriptions As Object, _
+                ByRef inputTotal As Double, foundProdCol As Boolean, foundInputCol As Boolean, _
+                Optional DebugMode As Boolean = False)
 
-' ==== Kumpulkan data ====
-Sub CollectData(ws As Worksheet, targetDate As Date, prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long, _
-                dictProducts As Object, dictDescriptions As Object, ByRef inputTotal As Double, _
-                foundProd As Boolean, foundInput As Boolean, Optional DebugMode As Boolean = False)
+    Dim r As Long, lastRow As Long
+    Dim prod As String, desc As String, cellDate As Variant
     
-    Dim lastRow As Long, i As Long
-    Dim prodName As String, descText As String, descText2 As String
-    Dim cellDate As Variant
-    
-    lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).row
-    
-    If DebugMode Then
-        Debug.Print "=== CollectData (" & ws.Name & ") ==="
-        Debug.Print "Target Date: " & targetDate & ", LastRow: " & lastRow
+    ' pakai prodCol kalau ada, biar tidak stop di kolom kosong
+    If prodCol > 0 Then
+        lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).row
+    ElseIf inputCol > 0 Then
+        lastRow = ws.Cells(ws.Rows.Count, inputCol).End(xlUp).row
+    Else
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
     End If
     
-    For i = 2 To lastRow
-        cellDate = ws.Cells(i, 1).Value
-        
-        If IsDate(cellDate) And cellDate = targetDate Then
-            prodName = Trim(ws.Cells(i, prodCol).Value)
-            If Len(prodName) > 0 Then
-                foundProd = True
-                If Not dictProducts.Exists(prodName) Then dictProducts(prodName) = 0
-                dictProducts(prodName) = dictProducts(prodName) + 1
-                If DebugMode Then Debug.Print "Produk: " & prodName
+    For r = 1 To lastRow
+        cellDate = ws.Cells(r, 1).Value
+        If IsDate(cellDate) Then
+            If Int(cellDate) = Int(targetDate) Then
+                ' --- produk ---
+                If foundProdCol Then
+                    prod = Trim(ws.Cells(r, prodCol).Value)
+                    If prod <> "" Then
+                        If Not dictProducts.Exists(prod) Then dictProducts.Add prod, 1
+                    End If
+                End If
+                
+                ' --- input ---
+                If foundInputCol Then
+                    If IsNumeric(ws.Cells(r, inputCol).Value) Then
+                        inputTotal = inputTotal + ws.Cells(r, inputCol).Value
+                    End If
+                End If
+                
+                ' --- deskripsi tambahan ---
+                If descCol1 > 0 Then
+                    desc = Trim(ws.Cells(r, descCol1).Value)
+                    If desc <> "" Then If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
+                End If
+                If descCol2 > 0 Then
+                    desc = Trim(ws.Cells(r, descCol2).Value)
+                    If desc <> "" Then If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
+                End If
             End If
-            
-            If IsNumeric(ws.Cells(i, inputCol).Value) Then
-                foundInput = True
-                inputTotal = inputTotal + ws.Cells(i, inputCol).Value
-                If DebugMode Then Debug.Print "Input: " & ws.Cells(i, inputCol).Value
-            End If
-            
-' Ambil nilai deskripsi pertama
-descText = Trim(ws.Cells(i, descCol1).Value)
-If LCase(descText) = "0" Then descText = ""
-
-' Ambil nilai deskripsi kedua
-If descCol2 > 0 Then
-    descText2 = Trim(ws.Cells(i, descCol2).Value)
-    If LCase(descText2) = "0" Then descText2 = ""
-Else
-    descText2 = ""
-End If
-
-' Gabungkan
-Dim fullDesc As String
-fullDesc = Trim(descText & " " & descText2)
-
-' Simpan kalau tidak kosong
-If Len(fullDesc) > 0 Then
-    If Not dictDescriptions.Exists(fullDesc) Then
-        dictDescriptions(fullDesc) = 0
-    End If
-    dictDescriptions(fullDesc) = dictDescriptions(fullDesc) + 1
-    
-    If DebugMode Then Debug.Print "Deskripsi: " & fullDesc
-End If
-
-
-
         End If
-    Next i
+    Next r
 End Sub
 
 
-' ==== Gabung dictionary ====
+' ==== Join dictionary keys jadi string ====
 Function JoinDictionaryKeys(dict As Object) As String
-    Dim key As Variant, result As String
+    Dim key As Variant, arr() As String, i As Long
+    If dict.Count = 0 Then Exit Function
+    ReDim arr(0 To dict.Count - 1)
+    i = 0
     For Each key In dict.Keys
-        result = result & IIf(result <> "", ", ", "") & key
+        arr(i) = key
+        i = i + 1
     Next
-    JoinDictionaryKeys = result
+    JoinDictionaryKeys = Join(arr, ", ")
 End Function
+
+
 
 Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
     Dim wb As Workbook, ws As Worksheet
@@ -1395,3 +1350,4 @@ End With
     
     wb.Close False
 End Sub
+
