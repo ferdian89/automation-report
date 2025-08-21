@@ -308,16 +308,15 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     Dim cellVal As String
     Dim cellComment As String
     
-    ' --- tambahan variabel untuk running, total, dan tracking eff terendah ---
+    ' --- tambahan variabel untuk running, total, dan list eff ---
     Dim runningCount As Long, totalMachines As Long
     Dim totalPlan As Double, totalActual As Double
-    Dim minPerf As Double, minMachine As String, minComment As String
+    Dim effList As Collection
+    Set effList = New Collection
     
     ' --- daftar mesin yang diambil ---
     validMachines = Array("UGS I", "Chemtech", "Chemtech 2", "UGS 6", "UGS II", "UGS III", "UGS V")
     totalMachines = UBound(validMachines) - LBound(validMachines) + 1
-    
-    minPerf = 999999    ' nilai awal besar supaya bisa dibanding
     
     ' --- format tanggal target ---
     targetText = Format(targetDate, "d - mmm")
@@ -383,9 +382,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
             If perfValue <= 100 Then
                 r = curRow - 1
                 Do While r > 1
-                    If StrComp(Trim(ws.Cells(r, 1).MergeArea.Cells(1, 1).Text), machineName, vbTextCompare) = 0 Then
-                        Exit Do
-                    End If
+                    If StrComp(Trim(ws.Cells(r, 1).MergeArea.Cells(1, 1).Text), machineName, vbTextCompare) = 0 Then Exit Do
                     If Not ws.Cells(r, dataCol + 1).Comment Is Nothing Then
                         Dim fullComment As String, words() As String
                         fullComment = Trim(ws.Cells(r, dataCol + 1).Comment.Text)
@@ -412,11 +409,13 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
             totalPlan = totalPlan + planValue
             totalActual = totalActual + actualValue
             
-            ' --- cek minimum perf (exclude 0) ---
-            If perfValue > 0 And perfValue < minPerf Then
-                minPerf = perfValue
-                minMachine = machineName
-                minComment = cellComment
+            ' simpan eff ke collection (exclude 0)
+            If perfValue > 0 Then
+                Dim rec(1 To 3) As Variant
+                rec(1) = machineName
+                rec(2) = perfValue
+                rec(3) = cellComment
+                effList.Add rec
             End If
             
             row = row + 1
@@ -425,7 +424,8 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
         
         curRow = curRow + 1
     Loop
-       row = row + 1
+    
+    row = row + 1
     
     ' --- summary running dan total ---
     wsTarget.Cells(row, 1).Value = "Marsho Plant"
@@ -437,15 +437,44 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
                                    Format(Round(totalActual, 0), "0") & " Ton"
     row = row + 1
     
-    ' --- tampilkan eff terendah ---
-    If minPerf < 999999 Then
-        wsTarget.Cells(row, 1).Value = "eff " & minMachine & ", " & _
-                                       Format(minPerf, "0.00") & "%, " & minComment
-        row = row + 2
-    Else
-        row = row + 2
+    ' --- tampilkan 3 eff terendah ---
+    Dim effArr() As Variant, effCount As Long, i As Long, j As Long
+    effCount = effList.Count
+    
+    If effCount > 0 Then
+        ReDim effArr(1 To effCount, 1 To 3)
+        For i = 1 To effCount
+            effArr(i, 1) = effList(i)(1)
+            effArr(i, 2) = effList(i)(2)
+            effArr(i, 3) = effList(i)(3)
+        Next i
+        
+        ' sort ascending by perf
+        For i = 1 To effCount - 1
+            For j = i + 1 To effCount
+                If effArr(j, 2) < effArr(i, 2) Then
+                    Dim tmp1 As String, tmp2 As Double, tmp3 As String
+                    tmp1 = effArr(i, 1): tmp2 = effArr(i, 2): tmp3 = effArr(i, 3)
+                    effArr(i, 1) = effArr(j, 1): effArr(i, 2) = effArr(j, 2): effArr(i, 3) = effArr(j, 3)
+                    effArr(j, 1) = tmp1: effArr(j, 2) = tmp2: effArr(j, 3) = tmp3
+                End If
+            Next j
+        Next i
+        
+        ' tampilkan max 3
+        Dim topCount As Long
+        topCount = WorksheetFunction.Min(3, effCount)
+        For i = 1 To topCount
+            wsTarget.Cells(row, 1).Value = "Eff " & effArr(i, 1) & " (" & _
+                                           Format(effArr(i, 2), "0.00") & "%)" & _
+                                           IIf(effArr(i, 3) <> "", " - " & effArr(i, 3), "")
+            row = row + 1
+        Next i
+        row = row + 1
     End If
 End Sub
+
+
 
 
 
