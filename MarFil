@@ -465,7 +465,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
         Dim topCount As Long
         topCount = WorksheetFunction.Min(3, effCount)
         For i = 1 To topCount
-            wsTarget.Cells(row, 1).Value = "Eff " & effArr(i, 1) & " (" & _
+            wsTarget.Cells(row, 1).Value = "eff " & effArr(i, 1) & " (" & _
                                            Format(effArr(i, 2), "0.00") & "%)" & _
                                            IIf(effArr(i, 3) <> "", " - " & effArr(i, 3), "")
             row = row + 1
