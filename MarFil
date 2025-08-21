@@ -97,7 +97,7 @@ Function GetAttachment_BIO() As String
                 If InStr(1, olMail.senderName, "Jessica Silvera", vbTextCompare) > 0 Or _
                    InStr(1, olMail.senderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0 Then
                     For Each olAtmt In olMail.Attachments
-                        If olAtmt.fileName = baseName Then
+                        If olAtmt.Filename = baseName Then
                             olAtmt.SaveAsFile savePath
                             GetAttachment_BIO = savePath
                             Exit Function
@@ -128,14 +128,29 @@ Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDat
     Dim totalPlan As Double, totalActual As Double
     Dim minPerf As Double, minMachine As String, minComment As String
     
+    ' --- tambahan variabel khusus summary baru ---
+    Dim thimPlan As Double, thimActual As Double, thimDowntime As String
+    Dim otherPlan As Double, otherActual As Double, otherDowntime As String
+    
     ' --- daftar mesin Filling Plant ---
-    validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 5 (ASRS)", _
-                          "Thimonier 7", "Thimonier 9", "Thimonier 10", "Emec - 2L -5L", _
-                          "Emec - 18L (16 Nozzle)", "Emec -  BIB 18 L (I)", "Emec -  BIB 18 L (II)", _
-                          "Emec -  BIB 18 L (III)", "SERAC")
-    totalMachines = UBound(validMachines) - LBound(validMachines) + 1
+        ' --- daftar mesin Filling Plant ---
+        validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 5 (ASRS)", _
+                              "Thimonier 7", "Thimonier 9", "Thimonier 10", "Emec - 2L -5L", _
+                              "Emec - 18L (16 Nozzle)", "Emec -  BIB 18 L (I)", "Emec -  BIB 18 L (II)", _
+                              "Emec -  BIB 18 L (III)", "SERAC")
+        
+' Hitung total mesin Thimmonier
+
+totalMachines = 0
+For Each m In validMachines
+    If InStr(1, m, "Thimonier", vbTextCompare) > 0 Then
+        totalMachines = totalMachines + 1
+    End If
+Next m
     
     minPerf = 999999
+    thimPlan = 0: thimActual = 0: thimDowntime = ""
+    otherPlan = 0: otherActual = 0: otherDowntime = ""
     
     ' --- format tanggal target ---
     targetText = Format(targetDate, "d - mmm")
@@ -157,7 +172,7 @@ Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDat
         Exit Sub
     End If
     
-    ' --- judul & header ---
+    ' --- header detail ---
     wsTarget.Cells(row, 1).Value = "Filling Plant (" & targetText & ")"
     row = row + 1
     wsTarget.Cells(row, 1).Value = "Mesin"
@@ -217,7 +232,7 @@ Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDat
                 Loop
             End If
             
-            ' tulis hasil ke target sheet
+            ' tulis detail ke target sheet
             wsTarget.Cells(row, 1).Value = machineName
             wsTarget.Cells(row, 2).Value = planValue
             wsTarget.Cells(row, 3).Value = actualValue
@@ -226,15 +241,27 @@ Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDat
             wsTarget.Cells(row, 5).Value = cellComment
             
             ' hitung running dan total
-            If actualValue > 0 Then runningCount = runningCount + 1
-            totalPlan = totalPlan + planValue
-            totalActual = totalActual + actualValue
+' hitung runningCount (khusus Thimmonier)
+If InStr(1, machineName, "Thimonier", vbTextCompare) > 0 Then
+    If actualValue > 0 Then runningCount = runningCount + 1
+End If
             
             ' cek perf minimum
             If perfValue > 0 And perfValue < minPerf Then
                 minPerf = perfValue
                 minMachine = machineName
                 minComment = cellComment
+            End If
+            
+            ' pisahkan Thimmonier vs Others
+            If InStr(1, machineName, "Thimonier", vbTextCompare) > 0 Then
+                thimPlan = thimPlan + planValue
+                thimActual = thimActual + actualValue
+                If thimDowntime = "" And cellComment <> "" Then thimDowntime = cellComment
+            Else
+                otherPlan = otherPlan + planValue
+                otherActual = otherActual + actualValue
+                If otherDowntime = "" And cellComment <> "" Then otherDowntime = cellComment
             End If
             
             row = row + 1
@@ -246,24 +273,27 @@ Sub GenerateFillingPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDat
     
     row = row + 1
     
-    ' --- summary ---
-    wsTarget.Cells(row, 1).Value = "Filling Plant"
+    ' --- summary baru ---
+    wsTarget.Cells(row, 1).Value = "FILLING PLANT"
     row = row + 1
-    wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " mesin"
-    row = row + 1
-    wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
-                                   Format(Round(totalPlan, 0), "0") & " / " & _
-                                   Format(Round(totalActual, 0), "0") & " Ton"
+wsTarget.Cells(row, 1).Value = "Run " & runningCount & " of " & totalMachines & " Thimmonier Machine"
     row = row + 1
     
-    If minPerf < 999999 Then
-        wsTarget.Cells(row, 1).Value = "eff " & minMachine & ", " & _
-                                       Format(minPerf, "0.00") & "%, " & minComment
-        row = row + 2
-    Else
-        row = row + 2
-    End If
+    wsTarget.Cells(row, 1).Value = "Thim Plan/Actual : " & _
+                                   Format(Round(thimPlan, 0), "0") & "/" & _
+                                   Format(Round(thimActual, 0), "0") & " Ton"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "downtime: " & IIf(thimDowntime = "", "none", thimDowntime)
+    row = row + 1
+    
+    wsTarget.Cells(row, 1).Value = "Others Plan/Actual: " & _
+                                   Format(Round(otherPlan, 0), "0") & "/" & _
+                                   Format(Round(otherActual, 0), "0") & " Ton"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "downtime: " & IIf(otherDowntime = "", "none", otherDowntime)
+    row = row + 2
 End Sub
+
 
 
 Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate As Date, ByRef row As Long)
@@ -360,7 +390,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
                         Dim fullComment As String, words() As String
                         fullComment = Trim(ws.Cells(r, dataCol + 1).Comment.Text)
                         words = Split(fullComment, " ")
-                        If UBound(words) <= 2 Then   ' max 3 kata
+                        If UBound(words) <= 6 Then   ' max 6 kata
                             If cellComment <> "" Then cellComment = cellComment & "; "
                             cellComment = cellComment & fullComment
                         End If
@@ -400,7 +430,7 @@ Sub GenerateMarshoPlantReport(ws As Worksheet, wsTarget As Worksheet, targetDate
     ' --- summary running dan total ---
     wsTarget.Cells(row, 1).Value = "Marsho Plant"
     row = row + 1
-    wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " mesin"
+    wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " Machine"
     row = row + 1
     wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
                                    Format(Round(totalPlan, 0), "0") & " / " & _
@@ -427,151 +457,4 @@ End Function
 
 
 
-Function GetCellVal(ws As Worksheet, targetRow As Long, _
-                    header1 As String, header2 As String, _
-                    header3 As String, header4 As String, _
-                    Optional headerRow1 As Long = 7, _
-                    Optional headerRow2 As Long = 8, _
-                    Optional headerRow3 As Long = 9, _
-                    Optional headerRow4 As Long = 10) As Double
-
-    Dim col As Long, lastCol As Long
-    Dim val1 As String, val2 As String, val3 As String, val4 As String
-    Dim h1 As String, h2 As String, h3 As String, h4 As String
-
-    On Error GoTo ErrorHandler
-
-    lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
-
-    h1 = LCase(Trim(header1))
-    h2 = LCase(Trim(header2))
-    h3 = LCase(Trim(header3))
-    h4 = LCase(Trim(header4))
-
-    For col = 1 To lastCol
-        val1 = LCase(Trim(GetMergedHeaderValue(ws, headerRow1, col)))
-        val2 = LCase(Trim(GetMergedHeaderValue(ws, headerRow2, col)))
-        val3 = LCase(Trim(GetMergedHeaderValue(ws, headerRow3, col)))
-        val4 = LCase(Trim(GetMergedHeaderValue(ws, headerRow4, col)))
-
-        ' Khusus Crude Fame: baris 8 & 9 merge (anggap val2 kosong, hanya gunakan val3)
-        If InStr(val1, "crude fame") > 0 And _
-           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
-            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
-            Exit Function
-        End If
-
-        ' Umum: semua header cocok secara longgar
-        If InStr(val1, h1) > 0 And InStr(val2, h2) > 0 And _
-           InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
-            GetCellVal = CDbl(ws.Cells(targetRow, col).Value)
-            Exit Function
-        End If
-    Next col
-
-    GetCellVal = 0
-    Exit Function
-
-ErrorHandler:
-    Debug.Print "Hasil GetCellVal: ERROR"
-    GetCellVal = 0
-End Function
-
-
-
-
-Function GetMergedHeaderValue(ws As Worksheet, headerRow As Long, col As Long) As String
-    Dim cell As Range
-    Set cell = ws.Cells(headerRow, col)
-
-    ' Jika sel kosong, cek apakah bagian dari merge
-    If IsEmpty(cell.Value) And cell.MergeCells Then
-        GetMergedHeaderValue = cell.MergeArea.Cells(1, 1).Value
-    Else
-        GetMergedHeaderValue = cell.Value
-    End If
-End Function
-
-
-
-
-' Fungsi bantu untuk mengambil nilai header dengan mempertimbangkan merged cells
-Function GetMergedHeader(ws As Worksheet, headerRow As Long, col As Long) As String
-    Dim val As String
-    val = Trim(ws.Cells(headerRow, col).Value)
-    
-    If val = "" Then
-        ' Cari ke atas jika cell kosong karena merged
-        Do While val = "" And headerRow > 1
-            headerRow = headerRow - 1
-            val = Trim(ws.Cells(headerRow, col).Value)
-        Loop
-    End If
-    
-    GetMergedHeader = val
-End Function
-
-
-
-
-
-Function GetTextVal(ws As Worksheet, targetRow As Long, ParamArray headers() As Variant) As String
-    Dim headerRow1 As Long: headerRow1 = 8
-    Dim headerRow2 As Long: headerRow2 = 9
-    Dim col As Long
-    Dim i As Long, j As Long
-    Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
-
-    For col = 1 To lastCol
-        j = 0
-        For i = LBound(headers) To UBound(headers)
-            Dim headerText As String
-            If j Mod 2 = 0 Then
-                headerText = LCase(Trim(ws.Cells(headerRow1, col).Value))
-            Else
-                headerText = LCase(Trim(ws.Cells(headerRow2, col).Value))
-            End If
-
-            If InStr(1, headerText, LCase(headers(i)), vbTextCompare) > 0 Then
-                j = j + 1
-            Else
-                Exit For
-            End If
-        Next i
-
-        If j = UBound(headers) + 1 Then
-            GetTextVal = Trim(ws.Cells(targetRow, col).Value)
-            Exit Function
-        End If
-    Next col
-
-    GetTextVal = "" ' Default jika tidak ketemu
-End Function
-
-' ==== Fungsi Cari Baris Tanggal ====
-Function FindMatchingRows(ws As Worksheet, colDate As String, startRow As Long, targetDate As Date) As Collection
-    Dim matchingRows As New Collection
-    Dim lastRow As Long, i As Long
-    Dim cell As Range, mergeVal As Variant
-    
-    lastRow = ws.Cells(ws.Rows.Count, colDate).End(xlUp).row
-    
-    For i = startRow To lastRow
-        Set cell = ws.Cells(i, colDate)
-        If cell.MergeCells Then
-            mergeVal = cell.MergeArea.Cells(1, 1).Value
-        Else
-            mergeVal = cell.Value
-        End If
-        
-        If IsDate(mergeVal) Then
-            ' Bandingkan hanya tanggalnya (abaikan jam)
-            If Int(CDate(mergeVal)) = targetDate Then
-                matchingRows.Add i
-            End If
-        End If
-    Next i
-    
-    Set FindMatchingRows = matchingRows
-End Function
 
