@@ -153,18 +153,21 @@ Sub GenerateCombinedFullReport()
         If refFilePath = "" Then _
             refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
                         "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+        If refFilePath = "" Then _
+            refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
+                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
         
         ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
                         "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
         If ptrFilePath = "" Then _
             ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
                         "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        
+
         scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
                         "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", Environ("TEMP") & "\")
         cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
                         "02. Report Daily CBS HO Agustus 2025.xlsx", Environ("TEMP") & "\")
-                        
+
         ' === Biodiesel ===
         bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
                     "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
@@ -172,9 +175,9 @@ Sub GenerateCombinedFullReport()
             bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
                     "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
         End If
-        
 
-        
+
+
         ' === Refinery ===
         If refFilePath <> "" Then
             Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
@@ -201,10 +204,10 @@ Sub GenerateCombinedFullReport()
 
 
 
-    ' --- Panggil plant HO ---
+     '--- Panggil plant HO ---
     Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
 
-    ' --- Panggil plant CBS ---
+     '--- Panggil plant CBS ---
     Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
         
                '  === Biodiesel ===
@@ -217,9 +220,9 @@ Sub GenerateCombinedFullReport()
             wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
             currentRow = currentRow + 2
         End If
-        
+
         Application.ScreenUpdating = True
-        
+
         ' === Simpan hasil ke file bulanan ===
         wbDest.Save
         Workbooks.Open monthFile
@@ -454,12 +457,14 @@ Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantL
 
         ' Ambil downtime
         Dim currentDowntime As String
-        currentDowntime = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
-        If currentDowntime <> "" Then
+        currentDowntime = Trim(GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9))
+        
+        If currentDowntime <> "" And currentDowntime <> "0" Then
             On Error Resume Next
             allDowntimes.Add currentDowntime, CStr(currentDowntime)
             On Error GoTo 0
         End If
+        
     Next r
 
     ' Gabungkan downtime jadi 1 string
@@ -741,14 +746,20 @@ Sub CollectData(ws As Object, targetDate As Date, prodCol As Long, inputCol As L
                 End If
                 
                 ' --- deskripsi tambahan ---
-                If descCol1 > 0 Then
-                    desc = Trim(ws.Cells(r, descCol1).Value)
-                    If desc <> "" Then If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
-                End If
-                If descCol2 > 0 Then
-                    desc = Trim(ws.Cells(r, descCol2).Value)
-                    If desc <> "" Then If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
-                End If
+        If descCol1 > 0 Then
+            desc = Trim(ws.Cells(r, descCol1).Value)
+            If desc <> "" And desc <> "0" Then
+                If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
+            End If
+        End If
+        
+        If descCol2 > 0 Then
+            desc = Trim(ws.Cells(r, descCol2).Value)
+            If desc <> "" And desc <> "0" Then
+                If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
+            End If
+        End If
+
             End If
         End If
     Next r
