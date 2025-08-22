@@ -184,7 +184,7 @@ Sub GenerateCombinedFullReport()
             wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
             currentRow = currentRow + 2
         End If
-        
+
         ' === PTR ===
         If ptrFilePath <> "" Then
             Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
@@ -192,22 +192,22 @@ Sub GenerateCombinedFullReport()
             wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
             currentRow = currentRow + 2
         End If
-        
+
         ' === Fractination ===
         If refFilePath <> "" Then
             Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
             Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
         End If
-        
 
-        
+
+
     ' --- Panggil plant HO ---
     Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
-    
+
     ' --- Panggil plant CBS ---
     Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
         
-                ' === Biodiesel ===
+               '  === Biodiesel ===
         If bioFilePath <> "" Then
             Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
             Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
@@ -1314,40 +1314,46 @@ If tempList.Count > 0 Then
 Else
     downtimeVal = ""
 End If
-
     
-    ' Output
+        ' Output
     With wsTarget
-   .Cells(row, 1).Value = plantLabel: row = row + 1
-    .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
-    .Cells(row, 1).Value = "Refine Glycerine : " & Round(refineGly / 1000, 0) & " MT": row = row + 1
-    .Cells(row, 1).Value = "Yellow Glycerine : " & Round(yellowGly / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = plantLabel: row = row + 1
+        If feedKg > 0 Then
+        .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Refine Glycerine : " & Round(refineGly / 1000, 0) & " MT": row = row + 1
+        .Cells(row, 1).Value = "Yellow Glycerine : " & Round(yellowGly / 1000, 0) & " MT": row = row + 1
+            
+        If IsNumeric(naohVal) Then
+            .Cells(row, 1).Value = "NaOH : " & Format(naohVal, "0.00") & " Kg/MT"
+        Else
+            .Cells(row, 1).Value = "NaOH : N/A"
+        End If
+        row = row + 1
         
- If IsNumeric(naohVal) Then
-        .Cells(row, 1).Value = "NaOH : " & Format(naohVal, "0.00") & " Kg/MT"
-    Else
-        .Cells(row, 1).Value = "NaOH : N/A"
-    End If
-    row = row + 1
-    
-    If IsNumeric(steamVal) Then
-        .Cells(row, 1).Value = "Steam : " & Format(steamVal, "#,##0.00") & " Kg/MT"
-    Else
-        .Cells(row, 1).Value = "Steam : N/A"
-    End If
-    row = row + 1
-    
-    If IsNumeric(electVal) Then
-        .Cells(row, 1).Value = "Electric : " & Format(electVal, "#,##0.00") & " Kwh/MT"
-    Else
-        .Cells(row, 1).Value = "Electric : N/A"
-    End If
-    row = row + 1
-    
-    .Cells(row, 1).Value = "" & downtimeVal
-    row = row + 2
-End With
-    
+        If IsNumeric(steamVal) Then
+            .Cells(row, 1).Value = "Steam : " & Format(steamVal, "#,##0.00") & " Kg/MT"
+        Else
+            .Cells(row, 1).Value = "Steam : N/A"
+        End If
+        row = row + 1
+        
+        If IsNumeric(electVal) Then
+            .Cells(row, 1).Value = "Electric : " & Format(electVal, "#,##0.00") & " Kwh/MT"
+        Else
+            .Cells(row, 1).Value = "Electric : N/A"
+        End If
+        row = row + 1
+        
+        .Cells(row, 1).Value = "" & downtimeVal
+        row = row + 2
+        
+        Else
+        .Cells(row, 1).Value = "Stop Plant": row = row + 1
+        .Cells(row, 1).Value = "" & downtimeVal
+        row = row + 2
+        End If
+    End With
+  
     wb.Close False
 End Sub
 
