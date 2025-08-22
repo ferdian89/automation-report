@@ -98,9 +98,11 @@ Sub GenerateCombinedFullReport()
     Dim refFilePath As String, ptrFilePath As String
     Dim scdFilePath As String, cbsFilePath As String
     Dim bioFilePath As String
+    Dim marshoFilePath As String
     Dim savePath As String, monthFile As String
     Dim wbDest As Workbook
-    Dim i As Long
+    Dim wsSummary As Worksheet
+    Dim sumRow As Long
     
     Application.AskToUpdateLinks = False
     Application.ScreenUpdating = False
@@ -109,28 +111,26 @@ Sub GenerateCombinedFullReport()
     ' === Tentukan lokasi penyimpanan ===
     savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
     
-    ' === Loop 10 hari terakhir ===
-    'For i = 1 To 1
-        targetDate = Date - 1
-        sheetName = Format(targetDate, "dd")
-        
-        ' === Tentukan file bulanan ===
-        monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
-        
-        ' === Buka file bulanan, atau buat baru ===
-        On Error Resume Next
-        Set wbDest = Workbooks.Open(monthFile)
-        On Error GoTo 0
-        
-        If wbDest Is Nothing Then
-            Set wbDest = Workbooks.Add
-            Application.DisplayAlerts = False
-            wbDest.Sheets(1).Name = "Dummy"
-            Application.DisplayAlerts = True
-            wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
-        End If
-        
-          ' === Siapkan sheet tanggal ===
+    targetDate = Date - 1
+    sheetName = Format(targetDate, "dd")
+    
+    ' === Tentukan file bulanan ===
+    monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
+    
+    ' === Buka file bulanan, atau buat baru ===
+    On Error Resume Next
+    Set wbDest = Workbooks.Open(monthFile)
+    On Error GoTo 0
+    
+    If wbDest Is Nothing Then
+        Set wbDest = Workbooks.Add
+        Application.DisplayAlerts = False
+        wbDest.Sheets(1).Name = "Dummy"
+        Application.DisplayAlerts = True
+        wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
+    End If
+    
+    ' === Siapkan sheet tanggal ===
     On Error Resume Next
     Set wsDest = wbDest.Sheets(sheetName)
     If Not wsDest Is Nothing Then
@@ -142,96 +142,109 @@ Sub GenerateCombinedFullReport()
     
     Set wsDest = wbDest.Sheets.Add(After:=wbDest.Sheets(wbDest.Sheets.Count))
     wsDest.Name = sheetName
+    wsDest.Tab.Color = RGB(255, 0, 0)
     currentRow = 1
     
-    ' --- Set warna tab sheet merah ---
-    wsDest.Tab.Color = RGB(255, 0, 0)   ' Merah
-        
-        ' === Ambil file dari email (hanya sekali, bukan per loop kalau mau hemat waktu) ===
-        refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
-                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        If refFilePath = "" Then _
-            refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
-                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        If refFilePath = "" Then _
-            refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
-                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        
-        ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                        "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        If ptrFilePath = "" Then _
-            ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                        "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-
-        scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
-                        "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", Environ("TEMP") & "\")
-        cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
-                        "02. Report Daily CBS HO Agustus 2025.xlsx", Environ("TEMP") & "\")
-
-        ' === Biodiesel ===
-        bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                    "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
-        If bioFilePath = "" Then
-            bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                    "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
-        End If
-
-
-
-        ' === Refinery ===
-        If refFilePath <> "" Then
-            Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
-            Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
-            Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-
-        ' === PTR ===
-        If ptrFilePath <> "" Then
-            Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-
-        ' === Fractination ===
-        If refFilePath <> "" Then
-            Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
-            Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
-        End If
-
-
-
-     '--- Panggil plant HO ---
+    ' === Siapkan Summary sheet ===
+    On Error Resume Next
+    Set wsSummary = wbDest.Sheets("Summary")
+    On Error GoTo 0
+    If wsSummary Is Nothing Then
+        Set wsSummary = wbDest.Sheets.Add(Before:=wbDest.Sheets(1))
+        wsSummary.Name = "Summary"
+    End If
+    sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
+    
+    ' === Ambil file dari email ===
+    refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    If refFilePath = "" Then _
+        refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    If refFilePath = "" Then _
+        refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    
+    ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    If ptrFilePath = "" Then _
+        ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    
+    scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
+                    "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", Environ("TEMP") & "\")
+    cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
+                    "02. Report Daily CBS HO Agustus 2025.xlsx", Environ("TEMP") & "\")
+    
+    marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
+                    "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx", Environ("TEMP") & "\")
+    
+    ' === Biodiesel ===
+    bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
+    If bioFilePath = "" Then
+        bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
+    End If
+    
+    ' === Refinery ===
+    If refFilePath <> "" Then
+        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === PTR ===
+    If ptrFilePath <> "" Then
+        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === Fractination ===
+    If refFilePath <> "" Then
+        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
+    End If
+    
+    ' --- Plant HO ---
     Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
-
-     '--- Panggil plant CBS ---
+    
+    ' --- Plant CBS ---
     Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
-        
-               '  === Biodiesel ===
-        If bioFilePath <> "" Then
-            Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
-            Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
-            Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
-            Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
+    
+        ' === MARSHO FILLING ===
+    If marshoFilePath <> "" Then
+        Call GenerateMarshoPlantReport(marshoFilePath, "Marunda-Marsho", wsDest, currentRow, targetDate, wsSummary, sumRow)
+        Call GenerateFillingPlantReport(marshoFilePath, "Marunda-Oil", wsDest, currentRow, targetDate, wsSummary, sumRow)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Marsho tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === Biodiesel ===
+    If bioFilePath <> "" Then
+        Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
+        Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
+        Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
+        Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
 
-        Application.ScreenUpdating = True
-
-        ' === Simpan hasil ke file bulanan ===
-        wbDest.Save
-        Workbooks.Open monthFile
-        
-    'Next i
-
+    
+    ' === Simpan hasil ===
+    wbDest.Save
     
     MsgBox "Laporan gabungan selesai dibuat.", vbInformation
 End Sub
+
 
 
 
@@ -1368,3 +1381,391 @@ End If
     wb.Close False
 End Sub
 
+Sub GenerateMarshoPlantReport(filePath As String, sheetSource As String, _
+                              wsTarget As Worksheet, ByRef row As Long, targetDate As Date, _
+                              wsSummary As Worksheet, ByRef sumRow As Long)
+
+    Dim wb As Workbook, ws As Worksheet
+    Dim col As Long, lastCol As Long
+    Dim dataCol As Long
+    Dim found As Boolean
+    Dim targetText As String
+    Dim planValue As Variant, actualValue As Variant, perfValue As Variant
+    Dim curRow As Long, lastRow As Long
+    Dim machineName As String
+    Dim validMachines As Variant, m As Variant
+    Dim cellVal As String
+    Dim cellComment As String
+    
+    ' --- tambahan variabel untuk running, total, dan list eff ---
+    Dim runningCount As Long, totalMachines As Long
+    Dim totalPlan As Double, totalActual As Double
+    Dim effList As Collection
+    Set effList = New Collection
+    
+    ' --- daftar mesin yang diambil ---
+    validMachines = Array("UGS I", "Chemtech", "Chemtech 2", "UGS 6", "UGS II", "UGS III", "UGS V")
+    totalMachines = UBound(validMachines) - LBound(validMachines) + 1
+    
+    ' buka workbook dan sheet
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+    
+    ' --- format tanggal target ---
+    targetText = Format(targetDate, "d - mmm")
+    
+    ' --- cari kolom tanggal di baris 5 ---
+    lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+    found = False
+    For col = 1 To lastCol
+        If Trim(ws.Cells(5, col).Text) = targetText Then
+            dataCol = col
+            found = True
+            Exit For
+        End If
+    Next col
+    
+    If Not found Then
+        wsTarget.Cells(row, 1).Value = "Marsho Plant - Tanggal tidak ditemukan (" & targetText & ")"
+        row = row + 2
+        wb.Close False
+        Exit Sub
+    End If
+    
+    ' --- judul & header ---
+    wsTarget.Cells(row, 1).Value = "Marsho Plant (" & targetText & ")"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "Mesin"
+    wsTarget.Cells(row, 2).Value = "Plan"
+    wsTarget.Cells(row, 3).Value = "Actual"
+    wsTarget.Cells(row, 4).Value = "Performance (%)"
+    wsTarget.Cells(row, 5).Value = "Comment"
+    row = row + 1
+    
+    machineName = ""
+    curRow = 6
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+    
+    ' --- loop baris sampai akhir sheet ---
+    Do While curRow <= lastRow
+        cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
+        
+        ' kalau baris ini adalah nama mesin valid
+        For Each m In validMachines
+            If StrComp(cellVal, m, vbTextCompare) = 0 Then
+                machineName = m
+                Exit For
+            End If
+        Next m
+
+        ' kalau baris ini adalah "IN TONASE" dan ada mesin aktif
+        If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
+            planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
+            actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
+            
+            ' hitung performance (%)
+            If planValue <> 0 Then
+                perfValue = Round((actualValue / planValue) * 100, 2)
+            Else
+                perfValue = 0
+            End If
+            
+            ' --- ambil comment dari baris produk (di antara nama mesin dan IN TONASE) ---
+            cellComment = ""
+            Dim r As Long
+            If perfValue <= 100 Then
+                r = curRow - 1
+                Do While r > 1
+                    If StrComp(Trim(ws.Cells(r, 1).MergeArea.Cells(1, 1).Text), machineName, vbTextCompare) = 0 Then Exit Do
+                    If Not ws.Cells(r, dataCol + 1).Comment Is Nothing Then
+                        Dim fullComment As String, words() As String
+                        fullComment = Trim(ws.Cells(r, dataCol + 1).Comment.Text)
+                        words = Split(fullComment, " ")
+                        If UBound(words) <= 6 Then   ' max 6 kata
+                            If cellComment <> "" Then cellComment = cellComment & "; "
+                            cellComment = cellComment & fullComment
+                        End If
+                    End If
+                    r = r - 1
+                Loop
+            End If
+            
+            ' tulis ke target
+            wsTarget.Cells(row, 1).Value = machineName
+            wsTarget.Cells(row, 2).Value = planValue
+            wsTarget.Cells(row, 3).Value = actualValue
+            wsTarget.Cells(row, 4).Value = perfValue
+            wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+            wsTarget.Cells(row, 5).Value = cellComment
+            
+            ' hitung running dan total
+            If actualValue > 0 Then runningCount = runningCount + 1
+            totalPlan = totalPlan + planValue
+            totalActual = totalActual + actualValue
+            
+            ' simpan eff ke collection (exclude 0)
+            If perfValue > 0 Then
+                Dim rec(1 To 3) As Variant
+                rec(1) = machineName
+                rec(2) = perfValue
+                rec(3) = cellComment
+                effList.Add rec
+            End If
+            
+            row = row + 1
+            machineName = ""
+        End If
+        
+        curRow = curRow + 1
+    Loop
+    
+    row = row + 1
+    
+    ' --- summary running dan total ---
+    wsSummary.Cells(sumRow, 1).Value = "Marsho Plant"
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Running " & runningCount & " dari " & totalMachines & " Machine"
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Plan vs Actual = " & _
+                                   Format(Round(totalPlan, 0), "0") & " / " & _
+                                   Format(Round(totalActual, 0), "0") & " Ton"
+    sumRow = sumRow + 1
+    
+    ' --- tampilkan 3 eff terendah ---
+    Dim effArr() As Variant, effCount As Long, i As Long, j As Long
+    effCount = effList.Count
+    
+    If effCount > 0 Then
+        ReDim effArr(1 To effCount, 1 To 3)
+        For i = 1 To effCount
+            effArr(i, 1) = effList(i)(1)
+            effArr(i, 2) = effList(i)(2)
+            effArr(i, 3) = effList(i)(3)
+        Next i
+        
+        ' sort ascending by perf
+        For i = 1 To effCount - 1
+            For j = i + 1 To effCount
+                If effArr(j, 2) < effArr(i, 2) Then
+                    Dim tmp1 As String, tmp2 As Double, tmp3 As String
+                    tmp1 = effArr(i, 1): tmp2 = effArr(i, 2): tmp3 = effArr(i, 3)
+                    effArr(i, 1) = effArr(j, 1): effArr(i, 2) = effArr(j, 2): effArr(i, 3) = effArr(j, 3)
+                    effArr(j, 1) = tmp1: effArr(j, 2) = tmp2: effArr(j, 3) = tmp3
+                End If
+            Next j
+        Next i
+        
+        ' tampilkan max 3
+        Dim topCount As Long
+        topCount = WorksheetFunction.Min(3, effCount)
+        For i = 1 To topCount
+            wsSummary.Cells(sumRow, 1).Value = "eff " & effArr(i, 1) & " (" & _
+                                           Format(effArr(i, 2), "0.00") & "%)" & _
+                                           IIf(effArr(i, 3) <> "", " - " & effArr(i, 3), "")
+            sumRow = sumRow + 1
+        Next i
+        sumRow = sumRow + 1
+    End If
+    
+    wb.Close False
+End Sub
+
+
+Sub GenerateFillingPlantReport(filePath As String, sheetSource As String, _
+                               wsTarget As Worksheet, ByRef row As Long, targetDate As Date, _
+                               wsSummary As Worksheet, ByRef sumRow As Long)
+
+    Dim wb As Workbook, ws As Worksheet
+    Dim col As Long, lastCol As Long, dataCol As Long
+    Dim found As Boolean, targetText As String
+    Dim planValue As Variant, actualValue As Variant, perfValue As Variant
+    Dim curRow As Long, lastRow As Long
+    Dim machineName As String
+    Dim validMachines As Variant, m As Variant
+    Dim cellVal As String, cellComment As String
+    
+    ' --- tambahan variabel untuk running, total, dan list eff ---
+    Dim runningCount As Long, totalMachines As Long
+    Dim thimPlan As Double, thimActual As Double, thimDowntime As String
+    Dim otherPlan As Double, otherActual As Double, otherDowntime As String
+    Dim effList As Collection
+    Set effList = New Collection
+    
+    ' --- daftar mesin Filling Plant ---
+    validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 5 (ASRS)", _
+                          "Thimonier 7", "Thimonier 9", "Thimonier 10", "Emec - 2L -5L", _
+                          "Emec - 18L (16 Nozzle)", "Emec -  BIB 18 L (I)", "Emec -  BIB 18 L (II)", _
+                          "Emec -  BIB 18 L (III)", "SERAC")
+    
+    ' hitung total mesin thimonier
+    totalMachines = 0
+    For Each m In validMachines
+        If InStr(1, m, "Thimonier", vbTextCompare) > 0 Then totalMachines = totalMachines + 1
+    Next m
+    
+    ' buka workbook dan sheet
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+    
+    ' format tanggal target
+    targetText = Format(targetDate, "d - mmm")
+    
+    ' cari kolom tanggal di baris 5
+    lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+    found = False
+    For col = 1 To lastCol
+        If Trim(ws.Cells(5, col).Text) = targetText Then
+            dataCol = col
+            found = True
+            Exit For
+        End If
+    Next col
+    
+    If Not found Then
+        wsTarget.Cells(row, 1).Value = "Filling Plant - Tanggal tidak ditemukan (" & targetText & ")"
+        row = row + 2
+        wb.Close False
+        Exit Sub
+    End If
+    
+    ' inisialisasi
+    runningCount = 0
+    thimPlan = 0: thimActual = 0: thimDowntime = ""
+    otherPlan = 0: otherActual = 0: otherDowntime = ""
+    
+    ' judul & header
+    wsTarget.Cells(row, 1).Value = "Filling Plant (" & targetText & ")"
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "Mesin"
+    wsTarget.Cells(row, 2).Value = "Plan"
+    wsTarget.Cells(row, 3).Value = "Actual"
+    wsTarget.Cells(row, 4).Value = "Performance (%)"
+    wsTarget.Cells(row, 5).Value = "Comment"
+    row = row + 1
+    
+    machineName = ""
+    curRow = 6
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+    
+    ' loop isi sheet
+    Do While curRow <= lastRow
+        cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
+        
+        ' cek nama mesin valid
+        For Each m In validMachines
+            If StrComp(cellVal, m, vbTextCompare) = 0 Then
+                machineName = m
+                Exit For
+            End If
+        Next m
+        
+        ' cek baris IN TONASE
+        If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
+            planValue = val(ws.Cells(curRow, dataCol).Value)
+            actualValue = val(ws.Cells(curRow, dataCol + 1).Value)
+            
+            If planValue <> 0 Then
+                perfValue = Round((actualValue / planValue) * 100, 2)
+            Else
+                perfValue = 0
+            End If
+            
+            ' comment
+            cellComment = ""
+            If perfValue <= 100 Then
+                If Not ws.Cells(curRow, dataCol + 1).Comment Is Nothing Then
+                    cellComment = Trim(ws.Cells(curRow, dataCol + 1).Comment.Text)
+                End If
+            End If
+            
+            ' tulis detail
+            wsTarget.Cells(row, 1).Value = machineName
+            wsTarget.Cells(row, 2).Value = planValue
+            wsTarget.Cells(row, 3).Value = actualValue
+            wsTarget.Cells(row, 4).Value = perfValue
+            wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+            wsTarget.Cells(row, 5).Value = cellComment
+            row = row + 1
+            
+            ' hitung running khusus Thimonier
+            If InStr(1, machineName, "Thimonier", vbTextCompare) > 0 Then
+                If actualValue > 0 Then runningCount = runningCount + 1
+                thimPlan = thimPlan + planValue
+                thimActual = thimActual + actualValue
+                If thimDowntime = "" And cellComment <> "" Then thimDowntime = cellComment
+            Else
+                otherPlan = otherPlan + planValue
+                otherActual = otherActual + actualValue
+                If otherDowntime = "" And cellComment <> "" Then otherDowntime = cellComment
+            End If
+            
+            ' simpan eff ke collection
+            If perfValue > 0 Then
+                Dim rec(1 To 3) As Variant
+                rec(1) = machineName
+                rec(2) = perfValue
+                rec(3) = cellComment
+                effList.Add rec
+            End If
+            
+            machineName = ""
+        End If
+        
+        curRow = curRow + 1
+    Loop
+    
+    row = row + 1
+    
+    ' === summary ke wsSummary ===
+    wsSummary.Cells(sumRow, 1).Value = "Filling Plant"
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Run " & runningCount & " of " & totalMachines & " Thimmonier Machine"
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Thim Plan/Actual : " & thimPlan & "/" & thimActual & " Ton"
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Downtime: " & IIf(thimDowntime = "", "none", thimDowntime)
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Others Plan/Actual : " & otherPlan & "/" & otherActual & " Ton"
+    sumRow = sumRow + 1
+    wsSummary.Cells(sumRow, 1).Value = "Downtime: " & IIf(otherDowntime = "", "none", otherDowntime)
+    sumRow = sumRow + 1
+    
+    ' tampilkan 3 eff terendah
+    Dim effArr() As Variant, effCount As Long, i As Long, j As Long
+    effCount = effList.Count
+    If effCount > 0 Then
+        ReDim effArr(1 To effCount, 1 To 3)
+        For i = 1 To effCount
+            effArr(i, 1) = effList(i)(1)
+            effArr(i, 2) = effList(i)(2)
+            effArr(i, 3) = effList(i)(3)
+        Next i
+        
+        For i = 1 To effCount - 1
+            For j = i + 1 To effCount
+                If effArr(j, 2) < effArr(i, 2) Then
+                    Dim tmp1 As String, tmp2 As Double, tmp3 As String
+                    tmp1 = effArr(i, 1): tmp2 = effArr(i, 2): tmp3 = effArr(i, 3)
+                    effArr(i, 1) = effArr(j, 1): effArr(i, 2) = effArr(j, 2): effArr(i, 3) = effArr(j, 3)
+                    effArr(j, 1) = tmp1: effArr(j, 2) = tmp2: effArr(j, 3) = tmp3
+                End If
+            Next j
+        Next i
+        
+        Dim topCount As Long
+        topCount = WorksheetFunction.Min(3, effCount)
+        For i = 1 To topCount
+            wsSummary.Cells(sumRow, 1).Value = "eff " & effArr(i, 1) & " (" & _
+                                           Format(effArr(i, 2), "0.00") & "%)" & _
+                                           IIf(effArr(i, 3) <> "", " - " & effArr(i, 3), "")
+            sumRow = sumRow + 1
+        Next i
+        sumRow = sumRow + 1
+    End If
+    
+    wb.Close False
+End Sub
+
+Function RoundNormal(ByVal x As Double, Optional digits As Long = 0) As Double
+    RoundNormal = Round(x, digits)
+End Function
