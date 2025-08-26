@@ -204,6 +204,9 @@ Sub GenerateCombinedFullReport()
         wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
         currentRow = currentRow + 2
     End If
+    
+    Call SumCPOProcessed(wsDest, currentRow)
+    currentRow = currentRow + 2
 
     ' === Fractination ===
     If refFilePath <> "" Then
@@ -1738,4 +1741,45 @@ End Sub
 Function RoundNormal(ByVal x As Double, Optional digits As Long = 0) As Double
     RoundNormal = Round(x, digits)
 End Function
+
+' Ambil angka dari teks "CPO process : 773 MT"
+Function ExtractCPOVal(ByVal cellVal As String) As Double
+    Dim parts() As String, i As Long
+    ExtractCPOVal = 0
+    cellVal = Trim(cellVal)
+    If Len(cellVal) = 0 Then Exit Function
+    parts = Split(cellVal, " ")
+    For i = LBound(parts) To UBound(parts)
+        If IsNumeric(parts(i)) Then
+            ExtractCPOVal = CDbl(parts(i))
+            Exit Function
+        End If
+    Next i
+End Function
+
+' Scan sheet output, jumlahkan semua baris yang diawali "CPO process"
+Sub SumCPOProcessed(ByVal wsDest As Worksheet, ByVal startRow As Long)
+    Dim lastRow As Long, i As Long, totalCPO As Double
+    Dim txt As String
+    lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row
+
+    totalCPO = 0
+    For i = 1 To lastRow
+        txt = LCase$(Trim$(CStr(wsDest.Cells(i, 1).Value)))
+        ' Cari baris yang ada kata "cpo process"
+        If InStr(txt, "cpo process") > 0 Then
+            totalCPO = totalCPO + ExtractCPOVal(CStr(wsDest.Cells(i, 1).Value))
+        End If
+    Next i
+
+    ' Format angka ribuan pakai titik (.)
+    wsDest.Cells(startRow, 1).Value = "TOTAL CPO PROCESSED = " & _
+                                      Format(totalCPO, "#,##0") & " MT"
+    wsDest.Cells(startRow, 1).Font.Bold = True
+End Sub
+
+
+
+
+
 
