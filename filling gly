@@ -1,0 +1,203 @@
+Function GetAttachment_FillingGly(Optional targetDate As Date) As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim fileName As String, savePath As String
+
+    ' Nama file yang diharapkan (boleh fleksibel)
+    fileName = "Daily Report Production Filling Glycerin Plant August 2025.xlsx"
+    
+    ' Path sementara
+    savePath = Environ("TEMP") & "\" & fileName
+    
+    ' Default targetDate = kemarin
+    If targetDate = 0 Then targetDate = Date - 1
+    
+    ' Pastikan Outlook aktif
+    Set olApp = GetObject(, "Outlook.Application")
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "ReceivedTime", True
+    
+    For Each olMail In olItems
+        If TypeName(olMail) = "MailItem" Then
+            If Int(olMail.ReceivedTime) = Date Then
+                If (InStr(1, olMail.SenderName, "Hani Wulandari", vbTextCompare) > 0) _
+                Or (InStr(1, olMail.SenderName, "Wendy Fadillah Nugraha", vbTextCompare) > 0) Then
+                    
+                    For Each olAtmt In olMail.Attachments
+                        ' Pencocokan fleksibel nama file
+                        If InStr(1, olAtmt.fileName, "Filling Glycerin", vbTextCompare) > 0 Then
+                            
+                            ' Hapus file lama kalau ada
+                            On Error Resume Next
+                            Kill savePath
+                            On Error GoTo 0
+                            
+                            ' Simpan attachment
+                            olAtmt.SaveAsFile savePath
+                            GetAttachment_FillingGly = savePath
+                            Exit Function
+                        End If
+                    Next
+                End If
+            End If
+        End If
+    Next
+    
+    ' Kalau tidak ketemu
+    GetAttachment_FillingGly = ""
+End Function
+
+
+
+' ====================================================
+' Fungsi Helper: SafeCellValue
+' ====================================================
+Private Function SafeCellValue(rng As Range) As String
+    On Error Resume Next
+    If rng Is Nothing Then
+        SafeCellValue = ""
+    ElseIf IsError(rng.Value) Then
+        SafeCellValue = ""
+    ElseIf IsEmpty(rng.Value) Then
+        SafeCellValue = ""
+    Else
+        SafeCellValue = Trim(CStr(rng.Value))
+    End If
+    On Error GoTo 0
+End Function
+
+
+' ====================================================
+' Sub Utama: GetFillingGlycerine (versi Safe Mode)
+' ====================================================
+Sub GetFillingGlycerine()
+    On Error GoTo ErrHandler
+    
+    Dim tempFile As String
+    Dim xlApp As Object, xlWb As Object, xlWs As Object
+    Dim wsDest As Worksheet
+    Dim targetDate As Date, searchValueDate As Date
+    Dim lastDataRow As Long, lastRow As Long
+    Dim i As Long, maxCol As Long
+    Dim inputCol As Long, prodCol As Long
+    Dim foundProdCol As Boolean, foundInputCol As Boolean
+    Dim inputProcessedTotal As Double
+    Dim dictProducts As Object
+    Dim prod As Variant, joinedProducts As String
+    Dim sheetName As String
+    
+    ' ==== inisialisasi ====
+    targetDate = Date - 1
+    searchValueDate = targetDate
+    sheetName = Format(searchValueDate, "dd-mm-yyyy")
+    Set dictProducts = CreateObject("Scripting.Dictionary")
+    
+    ' ==== buat worksheet tujuan ====
+    On Error Resume Next
+    Set wsDest = ThisWorkbook.Sheets(sheetName)
+    If wsDest Is Nothing Then
+        Set wsDest = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsDest.Name = sheetName
+    End If
+    On Error GoTo ErrHandler
+    
+    ' ==== ambil file lampiran ====
+    tempFile = GetAttachment_FillingGly(searchValueDate)
+    If tempFile = "" Then
+        MsgBox "File Filling Glycerine tidak ditemukan.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' ==== buka excel sumber ====
+    Set xlApp = CreateObject("Excel.Application")
+    xlApp.Visible = False
+    Set xlWb = xlApp.Workbooks.Open(tempFile, ReadOnly:=True)
+    
+    ' ==== loop sheet sumber ====
+    For Each xlWs In xlWb.Sheets
+        If InStr(1, LCase(xlWs.Name), "Daily Report") > 0 Then
+            inputProcessedTotal = 0
+            Set dictProducts = CreateObject("Scripting.Dictionary")
+            foundInputCol = False: foundProdCol = False
+            
+            ' batas kolom dan baris
+            maxCol = xlWs.Cells(7, xlWs.Columns.Count).End(xlToLeft).Column
+            lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).Row
+            
+            ' cari kolom (pakai SafeCellValue)
+            For i = 1 To maxCol
+                If SafeCellValue(xlWs.Cells(9, i)) <> "" Then
+                    If SafeCellValue(xlWs.Cells(9, i).MergeArea.Cells(1, 1)) = "PRODUCT" Then
+                        prodCol = i: foundProdCol = True
+                    End If
+                End If
+                
+                If SafeCellValue(xlWs.Cells(7, i)) <> "" And SafeCellValue(xlWs.Cells(10, i)) <> "" Then
+                    If SafeCellValue(xlWs.Cells(7, i).MergeArea.Cells(1, 1)) = "ACTUAL FINISH PRODUCT " And _
+                       SafeCellValue(xlWs.Cells(10, i)) = "TOTAL ACTUAL" Then
+                        inputCol = i: foundInputCol = True
+                    End If
+                End If
+            Next i
+            
+            ' ambil data sesuai tanggal
+            For i = 1 To lastDataRow
+                If IsDate(xlWs.Cells(i, 1).Value) Then
+                    If Int(xlWs.Cells(i, 1).Value) = Int(searchValueDate) Then
+                        
+                        If foundProdCol Then
+                            prod = SafeCellValue(xlWs.Cells(i, prodCol))
+                            If prod <> "" And Not dictProducts.exists(prod) Then dictProducts.Add prod, True
+                        End If
+                        
+                        If foundInputCol And IsNumeric(SafeCellValue(xlWs.Cells(i, inputCol))) Then
+                            inputProcessedTotal = inputProcessedTotal + CDbl(SafeCellValue(xlWs.Cells(i, inputCol)))
+                        End If
+                        
+                    End If
+                End If
+            Next i
+            
+            ' gabungkan produk
+            joinedProducts = ""
+            If dictProducts.Count > 0 Then
+                For Each prod In dictProducts.Keys
+                    If joinedProducts <> "" Then joinedProducts = joinedProducts & ", "
+                    joinedProducts = joinedProducts & prod
+                Next prod
+            End If
+            
+            ' tulis hasil ke sheet tujuan
+            lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).Row
+            If lastRow < 1 Then lastRow = 1
+            If wsDest.Cells(lastRow, 1).Value <> "" Then lastRow = lastRow + 2
+            
+            wsDest.Cells(lastRow, 1).Value = "Filling Glycerine"
+            
+            If inputProcessedTotal > 0 Then
+                wsDest.Cells(lastRow + 1, 1).Value = _
+                    IIf(joinedProducts <> "", joinedProducts, "-") & " = " & _
+                    Format(inputProcessedTotal / 1000, "0") & " Ton"
+            Else
+                wsDest.Cells(lastRow + 1, 1).Value = "Stop Plant"
+                wsDest.Cells(lastRow + 2, 1).Value = "Fit to PPIC Planning"
+            End If
+        End If
+    Next xlWs
+    
+CleanExit:
+    On Error Resume Next
+    If Not xlWb Is Nothing Then xlWb.Close False
+    If Not xlApp Is Nothing Then xlApp.Quit
+    Set xlWb = Nothing
+    Set xlApp = Nothing
+    Exit Sub
+
+ErrHandler:
+    MsgBox "Terjadi error: " & Err.Description, vbCritical, "Filling Glycerine"
+    Resume CleanExit
+End Sub
+
+
