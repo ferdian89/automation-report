@@ -1595,7 +1595,7 @@ ErrorHandler:
         Set effList = New Collection
         
         ' --- daftar mesin Filling Plant ---
-        validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 5 (ASRS)", _
+        validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 4 (ASRS)", "Thimonier 5 (ASRS)", _
                               "Thimonier 7", "Thimonier 9", "Thimonier 10", "Emec - 2L -5L", _
                               "Emec - 18L (16 Nozzle)", "Emec -  BIB 18 L (I)", "Emec -  BIB 18 L (II)", _
                               "Emec -  BIB 18 L (III)", "SERAC")
@@ -1788,3 +1788,4 @@ ErrorHandler:
     
     
     
+
