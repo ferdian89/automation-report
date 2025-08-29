@@ -89,7 +89,6 @@
     End Function
     
     
-' === Sub utama membuat laporan gabungan multi-date ===
 Sub GenerateCombinedFullReport()
     Dim targetDate As Date, sheetName As String
     Dim wsDest As Worksheet, currentRow As Long
@@ -106,20 +105,16 @@ Sub GenerateCombinedFullReport()
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
     
-    ' === Tentukan lokasi penyimpanan ===
+    ' === Lokasi simpan ===
     savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
-    
     targetDate = Date - 1
     sheetName = Format(targetDate, "dd")
-    
-    ' === Tentukan file bulanan ===
     monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
     
-    ' === Buka file bulanan, atau buat baru ===
+    ' === Buka file bulanan ===
     On Error Resume Next
     Set wbDest = Workbooks.Open(monthFile)
     On Error GoTo 0
-    
     If wbDest Is Nothing Then
         Set wbDest = Workbooks.Add
         Application.DisplayAlerts = False
@@ -128,7 +123,7 @@ Sub GenerateCombinedFullReport()
         wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
     End If
     
-    ' === Siapkan sheet tanggal ===
+    ' === Sheet tanggal ===
     On Error Resume Next
     Set wsDest = wbDest.Sheets(sheetName)
     If Not wsDest Is Nothing Then
@@ -148,9 +143,8 @@ Sub GenerateCombinedFullReport()
         MsgBox "Sheet '" & sheetName & "' gagal dibuat!", vbCritical
         Exit Sub
     End If
-    If currentRow < 1 Then currentRow = 1
     
-    ' === Siapkan Summary sheet ===
+    ' === Summary sheet ===
     On Error Resume Next
     Set wsSummary = wbDest.Sheets("Summary")
     On Error GoTo 0
@@ -163,17 +157,14 @@ Sub GenerateCombinedFullReport()
     ' === Ambil file dari email ===
     refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
                     "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-    If refFilePath = "" Then _
-        refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
+    If refFilePath = "" Then refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
                     "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-    If refFilePath = "" Then _
-        refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
+    If refFilePath = "" Then refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
                     "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
     
     ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
                     "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-    If ptrFilePath = "" Then _
-        ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+    If ptrFilePath = "" Then ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
                     "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
     
     scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
@@ -183,17 +174,13 @@ Sub GenerateCombinedFullReport()
     
     marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
                     "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx", Environ("TEMP") & "\")
-    If marshoFilePath = "" Then _
-    marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
+    If marshoFilePath = "" Then marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
                     "08. Actual vs Planning Agustus Marunda (2025).xlsx", Environ("TEMP") & "\")
     
-    ' === Biodiesel ===
     bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
                 "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
-    If bioFilePath = "" Then
-        bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+    If bioFilePath = "" Then bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
                 "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
-    End If
     
     ' === Refinery ===
     If refFilePath <> "" Then
@@ -204,7 +191,7 @@ Sub GenerateCombinedFullReport()
         wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
         currentRow = currentRow + 2
     End If
-
+    
     ' === PTR ===
     If ptrFilePath <> "" Then
         Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
@@ -215,20 +202,20 @@ Sub GenerateCombinedFullReport()
     
     Call SumCPOProcessed(wsDest, currentRow)
     currentRow = currentRow + 2
-
+    
     ' === Fractination ===
     If refFilePath <> "" Then
         Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
         Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
     End If
-
+    
     ' --- Plant HO ---
     Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
-
+    
     ' --- Plant CBS ---
     Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
     
-    ' === MARSHO FILLING ===
+    ' === MARSHO ===
     If marshoFilePath <> "" Then
         Call GenerateMarshoPlantReport(marshoFilePath, "Marunda-Marsho", wsDest, currentRow, targetDate, wsSummary, sumRow)
         Call GenerateFillingPlantReport(marshoFilePath, "Marunda-Oil", wsDest, currentRow, targetDate, wsSummary, sumRow)
@@ -247,54 +234,39 @@ Sub GenerateCombinedFullReport()
         wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
         currentRow = currentRow + 2
     End If
-    
+
+
     ' === Daily Storage CPO/CPKO ===
     Call InsertDailyStorageCPO(wsDest, currentRow, targetDate)
-    currentRow = currentRow + 5   ' kasih jarak
+    currentRow = currentRow + 5
     
-    ' === Simpan hasil ===
+    ' === Simpan ===
     wbDest.Save
-    
     Application.ScreenUpdating = True
     Application.DisplayAlerts = True
     MsgBox "Laporan gabungan selesai dibuat.", vbInformation
 End Sub
 
-' === Sub Daily Storage (integrasi) ===
-Private Sub InsertDailyStorageCPO(wsDest As Worksheet, ByRef currentRow As Long, targetDate As Date)
+
+' === Sub Daily Storage (fix posisi) ===
+Sub InsertDailyStorageCPO(wsDest As Worksheet, ByRef currentRow As Long, targetDate As Date)
     Dim cpoFilePath As String, cpkoFilePath As String
-    Dim sheetCodeCPO As String, sheetCodeCPKO As String
     Dim cpoFFA As Double, cpkoFFA As Double
     Dim cpoTotal As Double, cpkoTotal As Double
     Dim monthName As String, folderCPKO As String
     
-    If wsDest Is Nothing Then
-        MsgBox "Sheet tujuan Daily Storage tidak valid!", vbCritical
-        Exit Sub
-    End If
-    If currentRow < 1 Then currentRow = 1
+    If wsDest Is Nothing Then Exit Sub
+    If currentRow < 1 Then currentRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row + 2
     
-    ' --- Buat nama bulan Indonesia ---
-    monthName = GetIndonesianMonth(Month(targetDate), Year(targetDate))   ' contoh: "Agustus 2025"
-    
-    ' --- File CPO (Palmitic) ---
+    monthName = GetIndonesianMonth(Month(targetDate), Year(targetDate))
     cpoFilePath = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
-    
-    ' --- File CPKO (Non Palmitic) ---
     folderCPKO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\"
     cpkoFilePath = folderCPKO & "07. Daily Storage " & monthName & " (Non Palmitic Base).xlsx"
+    If Dir(cpkoFilePath) = "" Then cpkoFilePath = CariFileCPKO(folderCPKO, monthName)
     
-    If Dir(cpkoFilePath) = "" Then
-        cpkoFilePath = CariFileCPKO(folderCPKO, monthName) ' cari fleksibel
-    End If
-    
-    ' --- Hitung CPO ---
     Call GetCPOCPKOValue(cpoFilePath, Format(targetDate, "ddmm"), "CPO", cpoFFA, cpoTotal)
-    
-    ' --- Hitung CPKO ---
     Call GetCPOCPKOValue(cpkoFilePath, Format(targetDate, "dd"), "CPKO", cpkoFFA, cpkoTotal)
-
-    ' --- Tulis hasil ke sheet gabungan ---
+    
     With wsDest
         .Cells(currentRow, 1).Value = "=== DAILY STORAGE CPO/CPKO ==="
         currentRow = currentRow + 1
@@ -306,6 +278,83 @@ Private Sub InsertDailyStorageCPO(wsDest As Worksheet, ByRef currentRow As Long,
     End With
 End Sub
 
+' ========================
+' Ambil nilai CPO / CPKO
+' ========================
+Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, ByRef ffaValue As Double, ByRef totalStock As Double)
+    Dim wb As Workbook, ws As Worksheet
+    Dim i As Long, sumWeighted As Double, sumStock As Double
+    Dim colQty As String, colFFA As String, rowStart As Long, rowEnd As Long
+    
+    On Error GoTo ErrHandler
+    Debug.Print labelName & " >> cek file: " & filePath
+    
+    If Dir(filePath) = "" Then
+        Debug.Print labelName & " >> FILE TIDAK DITEMUKAN: " & filePath
+        ffaValue = 0: totalStock = 0
+        Exit Sub
+    End If
+    
+    ' coba attach kalau file sudah dibuka
+    On Error Resume Next
+    Set wb = GetObject(filePath)
+    On Error GoTo 0
+    If wb Is Nothing Then
+  Set wb = Workbooks.Open( _
+        fileName:=filePath, _
+        ReadOnly:=True, _
+        UpdateLinks:=0, _
+        IgnoreReadOnlyRecommended:=True, _
+        Notify:=False)
+    End If
+    
+    If wb Is Nothing Then
+        Debug.Print labelName & " >> GAGAL buka file (dikunci/error)."
+        ffaValue = 0: totalStock = 0
+        Exit Sub
+    End If
+    
+    On Error Resume Next
+    Set ws = wb.Sheets(sheetCode)
+    On Error GoTo ErrHandler
+    
+    If ws Is Nothing Then
+        Debug.Print labelName & " >> SHEET " & sheetCode & " TIDAK ADA"
+        ffaValue = 0: totalStock = 0
+    Else
+        If labelName = "CPO" Then
+            colQty = "G": colFFA = "I": rowStart = 8: rowEnd = 23
+        ElseIf labelName = "CPKO" Then
+            colQty = "F": colFFA = "H": rowStart = 8: rowEnd = 17
+        End If
+        
+        sumWeighted = 0: sumStock = 0
+        For i = rowStart To rowEnd
+            If IsNumeric(ws.Range(colQty & i).Value) And IsNumeric(ws.Range(colFFA & i).Value) Then
+                sumWeighted = sumWeighted + (ws.Range(colQty & i).Value * ws.Range(colFFA & i).Value)
+                sumStock = sumStock + ws.Range(colQty & i).Value
+            End If
+        Next i
+        
+        totalStock = sumStock
+        If sumStock > 0 Then
+            ffaValue = sumWeighted / sumStock
+        Else
+            ffaValue = 0
+        End If
+        Debug.Print labelName & " >> TotalStock=" & totalStock & ", FFA=" & ffaValue
+    End If
+    
+    wb.Close SaveChanges:=False
+    Exit Sub
+    
+ErrHandler:
+    Debug.Print labelName & " >> ERROR membuka file. " & Err.Description
+    ffaValue = 0: totalStock = 0
+    On Error Resume Next: wb.Close SaveChanges:=False
+End Sub
+
+    
     
     
     
@@ -1839,11 +1888,11 @@ ErrorHandler:
         wsDest.Cells(startRow, 1).Font.Bold = True
     End Sub
     
- 
+    
+
 
  
  
-
 ' ========================
 ' Cari file CPKO (fleksibel)
 ' ========================
@@ -1862,9 +1911,7 @@ Private Function CariFileCPKO(folderPath As String, bulanTahun As String) As Str
     Loop
     CariFileCPKO = ""
 End Function
-
-
-' ========================
+ ' ========================
 ' Nama bulan Indonesia
 ' ========================
 Private Function GetIndonesianMonth(ByVal bulan As Integer, ByVal tahun As Integer) As String
@@ -1873,86 +1920,5 @@ Private Function GetIndonesianMonth(ByVal bulan As Integer, ByVal tahun As Integ
                           "Juli", "Agustus", "September", "Oktober", "November", "Desember")
     GetIndonesianMonth = namaBulan(bulan) & " " & tahun
 End Function
-
-
-' ========================
-' Ambil nilai CPO / CPKO
-' ========================
-Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, ByRef ffaValue As Double, ByRef totalStock As Double)
-    Dim wb As Workbook, ws As Worksheet
-    Dim i As Long, sumWeighted As Double, sumStock As Double
-    Dim colQty As String, colFFA As String, rowStart As Long, rowEnd As Long
-    
-    On Error GoTo ErrHandler
-    Debug.Print labelName & " >> cek file: " & filePath
-    
-    If Dir(filePath) = "" Then
-        Debug.Print labelName & " >> FILE TIDAK DITEMUKAN: " & filePath
-        ffaValue = 0: totalStock = 0
-        Exit Sub
-    End If
-    
-    ' coba attach kalau file sudah dibuka
-    On Error Resume Next
-    Set wb = GetObject(filePath)
-    On Error GoTo 0
-    If wb Is Nothing Then
-  Set wb = Workbooks.Open( _
-        fileName:=filePath, _
-        ReadOnly:=True, _
-        UpdateLinks:=0, _
-        IgnoreReadOnlyRecommended:=True, _
-        Notify:=False)
-    End If
-    
-    If wb Is Nothing Then
-        Debug.Print labelName & " >> GAGAL buka file (dikunci/error)."
-        ffaValue = 0: totalStock = 0
-        Exit Sub
-    End If
-    
-    On Error Resume Next
-    Set ws = wb.Sheets(sheetCode)
-    On Error GoTo ErrHandler
-    
-    If ws Is Nothing Then
-        Debug.Print labelName & " >> SHEET " & sheetCode & " TIDAK ADA"
-        ffaValue = 0: totalStock = 0
-    Else
-        If labelName = "CPO" Then
-            colQty = "G": colFFA = "I": rowStart = 8: rowEnd = 23
-        ElseIf labelName = "CPKO" Then
-            colQty = "F": colFFA = "H": rowStart = 8: rowEnd = 17
-        End If
-        
-        sumWeighted = 0: sumStock = 0
-        For i = rowStart To rowEnd
-            If IsNumeric(ws.Range(colQty & i).Value) And IsNumeric(ws.Range(colFFA & i).Value) Then
-                sumWeighted = sumWeighted + (ws.Range(colQty & i).Value * ws.Range(colFFA & i).Value)
-                sumStock = sumStock + ws.Range(colQty & i).Value
-            End If
-        Next i
-        
-        totalStock = sumStock
-        If sumStock > 0 Then
-            ffaValue = sumWeighted / sumStock
-        Else
-            ffaValue = 0
-        End If
-        Debug.Print labelName & " >> TotalStock=" & totalStock & ", FFA=" & ffaValue
-    End If
-    
-    wb.Close SaveChanges:=False
-    Exit Sub
-    
-ErrHandler:
-    Debug.Print labelName & " >> ERROR membuka file. " & Err.Description
-    ffaValue = 0: totalStock = 0
-    On Error Resume Next: wb.Close SaveChanges:=False
-End Sub
-
- 
-    
-    
     
 
