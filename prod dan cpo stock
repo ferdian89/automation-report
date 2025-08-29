@@ -1,0 +1,1958 @@
+    ' === Fungsi ambil file dari email Outlook (hari ini saja + debug) ===
+    Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
+        Dim olApp As Object, olNs As Object, olFolder As Object
+        Dim olItems As Object, olMail As Object, olAtmt As Object
+        Dim senderName As Variant
+        Dim targetDate As Date
+        Dim fullPath As String
+        Dim wbCheck As Workbook
+        
+        GetAttachmentFromEmail = ""
+        targetDate = Date   ' hanya email hari ini
+        fullPath = saveFolder & fileName
+        
+        ' --- Folder tujuan
+        saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
+        fullPath = saveFolder & fileName
+        
+        Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
+        Debug.Print "Target file   : " & fileName
+        Debug.Print "Target date   : " & Format(targetDate, "yyyy-mm-dd")
+        Debug.Print "Save folder   : " & saveFolder
+        
+        ' Buka Outlook
+        On Error Resume Next
+        Set olApp = GetObject(, "Outlook.Application")
+        If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+        On Error GoTo 0
+        If olApp Is Nothing Then
+            Debug.Print "Gagal buka Outlook!"
+            Exit Function
+        End If
+        
+        ' Ambil folder Inbox
+        Set olNs = olApp.GetNamespace("MAPI")
+        Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
+        Set olItems = olFolder.Items
+        olItems.Sort "[ReceivedTime]", True
+        
+        Debug.Print "Total items inbox: " & olItems.Count
+        
+        ' Loop semua email
+        For Each olMail In olItems
+            If olMail.Class = 43 Then ' 43 = MailItem
+                If Int(olMail.ReceivedTime) = targetDate Then
+                    Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+                    
+                    ' Cek semua kemungkinan nama pengirim
+                    For Each senderName In senderNames
+                        If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                            Debug.Print "  -> Pengirim cocok: " & senderName
+                            
+                            ' Loop semua lampiran
+                            For Each olAtmt In olMail.Attachments
+                                Debug.Print "     Lampiran: " & olAtmt.fileName
+                                If olAtmt.fileName = fileName Then
+                                    ' --- Hapus file lama jika ada
+                                    If Dir(fullPath) <> "" Then
+                                        Kill fullPath
+                                    End If
+                                    
+                                    ' --- Simpan attachment
+                                    olAtmt.SaveAsFile fullPath
+                                    Debug.Print "  -> File disimpan di: " & fullPath
+                                    
+                                    ' --- Break link jika file Excel
+                                    If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
+                                        On Error Resume Next
+                                        Set wbCheck = Workbooks.Open(fullPath)
+                                        wbCheck.BreakLink Name:=fullPath, Type:=xlLinkTypeExcelLinks
+                                        wbCheck.Close SaveChanges:=True
+                                        On Error GoTo 0
+                                    End If
+                                    
+                                    GetAttachmentFromEmail = fullPath
+                                    Exit Function
+                                End If
+                            Next olAtmt
+                        End If
+                    Next senderName
+                End If
+            End If
+        Next olMail
+        
+        If GetAttachmentFromEmail = "" Then
+            Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
+        End If
+        
+        Debug.Print "=== SELESAI ==="
+    End Function
+    
+    
+' === Sub utama membuat laporan gabungan multi-date ===
+Sub GenerateCombinedFullReport()
+    Dim targetDate As Date, sheetName As String
+    Dim wsDest As Worksheet, currentRow As Long
+    Dim refFilePath As String, ptrFilePath As String
+    Dim scdFilePath As String, cbsFilePath As String
+    Dim bioFilePath As String
+    Dim marshoFilePath As String
+    Dim savePath As String, monthFile As String
+    Dim wbDest As Workbook
+    Dim wsSummary As Worksheet
+    Dim sumRow As Long
+    
+    Application.AskToUpdateLinks = False
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    ' === Tentukan lokasi penyimpanan ===
+    savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
+    
+    targetDate = Date - 1
+    sheetName = Format(targetDate, "dd")
+    
+    ' === Tentukan file bulanan ===
+    monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
+    
+    ' === Buka file bulanan, atau buat baru ===
+    On Error Resume Next
+    Set wbDest = Workbooks.Open(monthFile)
+    On Error GoTo 0
+    
+    If wbDest Is Nothing Then
+        Set wbDest = Workbooks.Add
+        Application.DisplayAlerts = False
+        wbDest.Sheets(1).Name = "Dummy"
+        Application.DisplayAlerts = True
+        wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
+    End If
+    
+    ' === Siapkan sheet tanggal ===
+    On Error Resume Next
+    Set wsDest = wbDest.Sheets(sheetName)
+    If Not wsDest Is Nothing Then
+        Application.DisplayAlerts = False
+        wsDest.Delete
+        Application.DisplayAlerts = True
+    End If
+    On Error GoTo 0
+    
+    Set wsDest = wbDest.Sheets.Add(After:=wbDest.Sheets(wbDest.Sheets.Count))
+    wsDest.Name = sheetName
+    wsDest.Tab.Color = RGB(255, 0, 0)
+    currentRow = 1
+    
+    ' === Validasi wsDest ===
+    If wsDest Is Nothing Then
+        MsgBox "Sheet '" & sheetName & "' gagal dibuat!", vbCritical
+        Exit Sub
+    End If
+    If currentRow < 1 Then currentRow = 1
+    
+    ' === Siapkan Summary sheet ===
+    On Error Resume Next
+    Set wsSummary = wbDest.Sheets("Summary")
+    On Error GoTo 0
+    If wsSummary Is Nothing Then
+        Set wsSummary = wbDest.Sheets.Add(Before:=wbDest.Sheets(1))
+        wsSummary.Name = "Summary"
+    End If
+    sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
+    
+    ' === Ambil file dari email ===
+    refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    If refFilePath = "" Then _
+        refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    If refFilePath = "" Then _
+        refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
+                    "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    
+    ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    If ptrFilePath = "" Then _
+        ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                    "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+    
+    scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
+                    "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", Environ("TEMP") & "\")
+    cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
+                    "02. Report Daily CBS HO Agustus 2025.xlsx", Environ("TEMP") & "\")
+    
+    marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
+                    "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx", Environ("TEMP") & "\")
+    If marshoFilePath = "" Then _
+    marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
+                    "08. Actual vs Planning Agustus Marunda (2025).xlsx", Environ("TEMP") & "\")
+    
+    ' === Biodiesel ===
+    bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
+    If bioFilePath = "" Then
+        bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
+    End If
+    
+    ' === Refinery ===
+    If refFilePath <> "" Then
+        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+
+    ' === PTR ===
+    If ptrFilePath <> "" Then
+        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    Call SumCPOProcessed(wsDest, currentRow)
+    currentRow = currentRow + 2
+
+    ' === Fractination ===
+    If refFilePath <> "" Then
+        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
+    End If
+
+    ' --- Plant HO ---
+    Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
+
+    ' --- Plant CBS ---
+    Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
+    
+    ' === MARSHO FILLING ===
+    If marshoFilePath <> "" Then
+        Call GenerateMarshoPlantReport(marshoFilePath, "Marunda-Marsho", wsDest, currentRow, targetDate, wsSummary, sumRow)
+        Call GenerateFillingPlantReport(marshoFilePath, "Marunda-Oil", wsDest, currentRow, targetDate, wsSummary, sumRow)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Marsho tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === Biodiesel ===
+    If bioFilePath <> "" Then
+        Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
+        Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
+        Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
+        Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === Daily Storage CPO/CPKO ===
+    Call InsertDailyStorageCPO(wsDest, currentRow, targetDate)
+    currentRow = currentRow + 5   ' kasih jarak
+    
+    ' === Simpan hasil ===
+    wbDest.Save
+    
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    MsgBox "Laporan gabungan selesai dibuat.", vbInformation
+End Sub
+
+' === Sub Daily Storage (integrasi) ===
+Private Sub InsertDailyStorageCPO(wsDest As Worksheet, ByRef currentRow As Long, targetDate As Date)
+    Dim cpoFilePath As String, cpkoFilePath As String
+    Dim sheetCodeCPO As String, sheetCodeCPKO As String
+    Dim cpoFFA As Double, cpkoFFA As Double
+    Dim cpoTotal As Double, cpkoTotal As Double
+    Dim monthName As String, folderCPKO As String
+    
+    If wsDest Is Nothing Then
+        MsgBox "Sheet tujuan Daily Storage tidak valid!", vbCritical
+        Exit Sub
+    End If
+    If currentRow < 1 Then currentRow = 1
+    
+    ' --- Buat nama bulan Indonesia ---
+    monthName = GetIndonesianMonth(Month(targetDate), Year(targetDate))   ' contoh: "Agustus 2025"
+    
+    ' --- File CPO (Palmitic) ---
+    cpoFilePath = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
+    
+    ' --- File CPKO (Non Palmitic) ---
+    folderCPKO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\"
+    cpkoFilePath = folderCPKO & "07. Daily Storage " & monthName & " (Non Palmitic Base).xlsx"
+    
+    If Dir(cpkoFilePath) = "" Then
+        cpkoFilePath = CariFileCPKO(folderCPKO, monthName) ' cari fleksibel
+    End If
+    
+    ' --- Hitung CPO ---
+    Call GetCPOCPKOValue(cpoFilePath, Format(targetDate, "ddmm"), "CPO", cpoFFA, cpoTotal)
+    
+    ' --- Hitung CPKO ---
+    Call GetCPOCPKOValue(cpkoFilePath, Format(targetDate, "dd"), "CPKO", cpkoFFA, cpkoTotal)
+
+    ' --- Tulis hasil ke sheet gabungan ---
+    With wsDest
+        .Cells(currentRow, 1).Value = "=== DAILY STORAGE CPO/CPKO ==="
+        currentRow = currentRow + 1
+        .Cells(currentRow, 1).Value = "Tanggal : " & Format(targetDate, "dd/mm/yyyy")
+        currentRow = currentRow + 1
+        .Cells(currentRow, 1).Value = "CPO Stock : " & Format(cpoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpoFFA, "0.00")
+        currentRow = currentRow + 1
+        .Cells(currentRow, 1).Value = "CPKO Stock : " & Format(cpkoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpkoFFA, "0.00")
+    End With
+End Sub
+
+    
+    
+    
+    
+    ' ==== Fungsi pembagian aman ====
+    Private Function SafeDiv(numerator As Double, denominator As Double) As Double
+        If denominator = 0 Or IsError(denominator) Or IsError(numerator) _
+           Or IsEmpty(denominator) Or IsEmpty(numerator) _
+           Or Not IsNumeric(denominator) Or Not IsNumeric(numerator) Then
+            SafeDiv = 0
+        Else
+            SafeDiv = numerator / denominator
+        End If
+    End Function
+    
+    ' ==== Fungsi ambil angka aman ====
+    Private Function SafeGetVal(ws As Worksheet, rowNum As Long, header1 As String, header2 As String, _
+                                headerRow1 As Long, headerRow2 As Long) As Double
+        Dim val As Variant
+        On Error Resume Next
+        val = GetCellVal(ws, rowNum, header1, header2, headerRow1, headerRow2)
+        On Error GoTo 0
+        
+        If IsError(val) Or IsEmpty(val) Or Not IsNumeric(val) Then
+            SafeGetVal = 0
+        Else
+            SafeGetVal = CDbl(val)
+        End If
+    End Function
+    
+    ' ------------------ REFINERY & PTR ------------------
+    Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
+        Dim wb As Workbook, ws As Worksheet
+        Dim lastRow As Long, i As Long
+        Dim matchingRows As Collection
+        Dim mergeVal As Variant
+        Dim totalCPOKg As Double, totalRBDPOKg As Double, totalPFADKg As Double
+        Dim weightedSteam As Double, weightedElectricity As Double
+        Dim weightedBE As Double, weightedPA As Double
+        Dim weightedCPOFFA As Double, weightedRBDPOFFA As Double
+        Dim weightedRBDPOCol As Double, weightedPFADPurity As Double
+        Dim rowCPO As Double
+        Dim downtimeText As String
+        Dim r As Variant
+    
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+    
+        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+        Set matchingRows = New Collection
+    
+        Dim isEndOfMonth As Boolean
+        isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+    
+        For i = 10 To lastRow
+            If ws.Cells(i, 1).MergeCells Then
+                mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
+            Else
+                mergeVal = ws.Cells(i, 1).Value
+            End If
+        
+            If mergeVal = targetDay Then
+                If isEndOfMonth Then
+                    If i >= 150 Then matchingRows.Add i
+                Else
+                    matchingRows.Add i
+                End If
+            End If
+        Next i
+    
+        If matchingRows.Count = 0 Then
+            wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+    
+        For Each r In matchingRows
+            rowCPO = SafeGetVal(ws, CLng(r), "input", "kg", 8, 9)
+            totalCPOKg = totalCPOKg + rowCPO
+            totalRBDPOKg = totalRBDPOKg + SafeGetVal(ws, CLng(r), "rbd output", "kg", 8, 9)
+            totalPFADKg = totalPFADKg + SafeGetVal(ws, CLng(r), "pfad output", "kg", 8, 9)
+    
+            weightedSteam = weightedSteam + rowCPO * SafeGetVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
+            weightedElectricity = weightedElectricity + rowCPO * SafeGetVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
+            weightedBE = weightedBE + rowCPO * SafeGetVal(ws, CLng(r), "bleaching earth", "%", 8, 9)
+            weightedPA = weightedPA + rowCPO * SafeGetVal(ws, CLng(r), "phosphoric acid", "%", 8, 9)
+            weightedCPOFFA = weightedCPOFFA + rowCPO * SafeGetVal(ws, CLng(r), "input", "ffa", 8, 9)
+            weightedRBDPOFFA = weightedRBDPOFFA + rowCPO * SafeGetVal(ws, CLng(r), "rbd output", "%ffa", 8, 9)
+            weightedRBDPOCol = weightedRBDPOCol + rowCPO * SafeGetVal(ws, CLng(r), "rbd output", "col", 8, 9)
+            weightedPFADPurity = weightedPFADPurity + rowCPO * SafeGetVal(ws, CLng(r), "pfad output", "%ffa", 8, 9)
+    
+            Dim currentDT As String
+            currentDT = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+            If Trim(currentDT) <> "" Then
+                downtimeText = downtimeText & vbCrLf & currentDT
+            End If
+        Next r
+    
+        wb.Close False
+    
+        Dim cpoMT As Long
+        cpoMT = Round(SafeDiv(totalCPOKg, 1000))
+    
+        With wsTarget
+            .Cells(row, 1).Value = plantLabel
+            row = row + 1
+    
+            If cpoMT > 0 Then
+                ' Normal output kalau CPO > 0
+                Dim rbdpoMT As Long, pfadMT As Long
+                Dim rbdpoPct As Double, pfadPct As Double
+    
+                rbdpoMT = Round(SafeDiv(totalRBDPOKg, 1000))
+                pfadMT = Round(SafeDiv(totalPFADKg, 1000))
+                rbdpoPct = SafeDiv(totalRBDPOKg, totalCPOKg) * 100
+                pfadPct = SafeDiv(totalPFADKg, totalCPOKg) * 100
+    
+                .Cells(row, 1).Value = "Quantity": row = row + 1
+                .Cells(row, 1).Value = "CPO process : " & cpoMT & " MT": row = row + 1
+                .Cells(row, 1).Value = "RBDPO : " & rbdpoMT & " MT (" & Format(rbdpoPct, "0.00") & " %)": row = row + 1
+                .Cells(row, 1).Value = "PFAD : " & pfadMT & " MT (" & Format(pfadPct, "0.00") & " %)": row = row + 1
+                .Cells(row, 1).Value = "Consumption": row = row + 1
+                .Cells(row, 1).Value = "Steam : " & Round(SafeDiv(weightedSteam, totalCPOKg), 0) & " kg/MT cpo": row = row + 1
+                .Cells(row, 1).Value = "Elect : " & Round(SafeDiv(weightedElectricity, totalCPOKg), 0) & " kWh/MT": row = row + 1
+                .Cells(row, 1).Value = "BE : " & Format(SafeDiv(weightedBE, totalCPOKg), "0.00") & " %": row = row + 1
+                .Cells(row, 1).Value = "PA : " & Format(SafeDiv(weightedPA, totalCPOKg), "0.00") & " %": row = row + 1
+                .Cells(row, 1).Value = "Quality": row = row + 1
+                .Cells(row, 1).Value = "CPO FFA : " & Format(SafeDiv(weightedCPOFFA, totalCPOKg), "0.00") & " %": row = row + 1
+                .Cells(row, 1).Value = "RBDPO FFA : " & Format(SafeDiv(weightedRBDPOFFA, totalCPOKg), "0.00") & " %": row = row + 1
+                .Cells(row, 1).Value = "Color RBDPO : " & Format(SafeDiv(weightedRBDPOCol, totalCPOKg), "0.0"): row = row + 1
+                .Cells(row, 1).Value = "PFAD purity : " & Format(SafeDiv(weightedPFADPurity, totalCPOKg), "0.00") & " %": row = row + 1
+            End If
+    
+            ' Downtime selalu dicek, tapi hanya ditulis jika tidak kosong
+            If downtimeText <> "" Then
+                Dim arr() As String: arr = Split(downtimeText, vbCrLf)
+                Dim combinedText As String
+                combinedText = ""
+    
+                For i = 0 To UBound(arr)
+                    Dim cleaned As String
+                    cleaned = Trim(arr(i))
+                    If cleaned <> "" And cleaned <> "0" And cleaned <> "- 0" Then
+                        If combinedText <> "" Then
+                            combinedText = combinedText & ", " & cleaned
+                        Else
+                            combinedText = cleaned
+                        End If
+                    End If
+                Next i
+    
+                If combinedText <> "" Then
+                    .Cells(row, 1).Value = combinedText
+                    row = row + 1
+                End If
+            End If
+    
+            row = row + 1
+        End With
+    End Sub
+    
+    
+    Sub GenerateFractinationReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
+        Dim wb As Workbook, ws As Worksheet
+        Dim rbdpoKg As Double, oleinKg As Double, stearinKg As Double
+        Dim weightedSteam As Double, weightedElectricity As Double, weightedWater As Double
+        Dim downtimeText As String
+        Dim i As Long, lastRow As Long
+        Dim cell As Range, mergeVal As Variant
+        Dim matchingRows As Collection, r As Variant
+    
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+        Set matchingRows = New Collection
+    
+        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    
+        ' === Tentukan posisi tanggal ===
+        Dim isEndOfMonth As Boolean, isStartOfMonth As Boolean
+        isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+        isStartOfMonth = (Day(Date) = 1)
+    
+        For i = 10 To lastRow
+            If ws.Cells(i, 1).MergeCells Then
+                mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
+            Else
+                mergeVal = ws.Cells(i, 1).Value
+            End If
+    
+            If mergeVal = targetDay Then
+                If isEndOfMonth Then
+                    If i >= 150 Then
+                        matchingRows.Add i
+                    End If
+                Else
+                    matchingRows.Add i
+                End If
+            End If
+        Next i
+    
+        If matchingRows.Count = 0 Then
+            wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+    
+        ' === Ambil data utama ===
+        Dim allDowntimes As Collection
+        Set allDowntimes = New Collection
+    
+        For Each r In matchingRows
+            Dim inputRBDPO As Double
+            inputRBDPO = GetCellVal(ws, CLng(r), "rbdpo input", "kg", 8, 9)
+            rbdpoKg = rbdpoKg + inputRBDPO
+            oleinKg = oleinKg + GetCellVal(ws, CLng(r), "rbdol output", "kg", 8, 9)
+            stearinKg = stearinKg + GetCellVal(ws, CLng(r), "rbdst output", "kg", 8, 9)
+    
+            weightedSteam = weightedSteam + inputRBDPO * GetCellVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
+            weightedElectricity = weightedElectricity + inputRBDPO * GetCellVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
+            weightedWater = weightedWater + inputRBDPO * GetCellVal(ws, CLng(r), "water", "m3/mt", 8, 9)
+    
+            ' Ambil downtime
+            Dim currentDowntime As String
+            currentDowntime = Trim(GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9))
+            
+            If currentDowntime <> "" And currentDowntime <> "0" Then
+                On Error Resume Next
+                allDowntimes.Add currentDowntime, CStr(currentDowntime)
+                On Error GoTo 0
+            End If
+            
+        Next r
+    
+        ' Gabungkan downtime jadi 1 string
+        downtimeText = ""
+        If allDowntimes.Count > 0 Then
+            Dim dt As Variant
+            For Each dt In allDowntimes
+                If downtimeText <> "" Then
+                    downtimeText = downtimeText & ", "
+                End If
+                downtimeText = downtimeText & dt
+            Next dt
+        End If
+    
+        ' === Tulis ke target ===
+        With wsTarget
+            .Cells(row, 1).Value = plantLabel
+            row = row + 1
+    
+            If rbdpoKg > 0 Then
+                .Cells(row, 1).Value = "Quantity": row = row + 1
+                .Cells(row, 1).Value = "RBDPO Process : " & Round(rbdpoKg / 1000, 0) & " MT": row = row + 1
+                .Cells(row, 1).Value = "Olein : " & Round(oleinKg / 1000, 0) & " MT (" & Format(oleinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+                .Cells(row, 1).Value = "Stearin : " & Round(stearinKg / 1000, 0) & " MT (" & Format(stearinKg / rbdpoKg * 100, "0.00") & " %)": row = row + 1
+                .Cells(row, 1).Value = "Steam : " & Format(weightedSteam / rbdpoKg, "0.00") & " kg/MT": row = row + 1
+                .Cells(row, 1).Value = "Elect : " & Format(weightedElectricity / rbdpoKg, "0.00") & " kwh/MT": row = row + 1
+                .Cells(row, 1).Value = "Water : " & Format(weightedWater / rbdpoKg, "0.00") & " m3/MT RBDPO": row = row + 1
+            End If
+    
+            ' Tulis downtime (selalu tulis, meskipun RBDPO=0)
+            If downtimeText <> "" Then
+                .Cells(row, 1).Value = downtimeText
+                row = row + 1
+            End If
+    
+            row = row + 1
+        End With
+    
+        wb.Close SaveChanges:=False
+    End Sub
+    
+    
+    
+    Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collection
+        Dim i As Long, lastRow As Long
+        Dim valDate As Variant, mergeVal As Variant
+        Dim isEndOfMonth As Boolean, isStartOfMonth As Boolean
+        Dim matches As New Collection
+    
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+        isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+        isStartOfMonth = (Day(Date) = 1)
+    
+        For i = 10 To lastRow
+            If ws.Cells(i, 1).MergeCells Then
+                mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
+            Else
+                mergeVal = ws.Cells(i, 1).Value
+            End If
+    
+            If IsDate(mergeVal) Then
+                valDate = DateValue(mergeVal)
+                If valDate = targetDate Then
+                    If isEndOfMonth And i >= 150 Then
+                        matches.Add i
+                    ElseIf Not isEndOfMonth Then
+                        matches.Add i
+                    End If
+                End If
+            End If
+        Next i
+    
+        Set GetMatchingRowsByDate = matches
+    End Function
+    
+    
+    
+    ' ------------------ UTIL ------------------
+    Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
+        Dim lastCol As Long, col As Long, h1 As String, h2 As String
+        lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+        For col = 2 To lastCol
+            h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+            h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+            If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+                GetCellVal = ws.Cells(row, col).Value
+                Exit Function
+            End If
+        Next col
+        GetCellVal = 0
+    End Function
+    
+    Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
+        Dim lastCol As Long, col As Long, h1 As String, h2 As String
+        lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+        For col = 2 To lastCol
+            h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+            h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+            If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+                GetTextVal = CStr(ws.Cells(row, col).Value)
+                Exit Function
+            End If
+        Next col
+        GetTextVal = ""
+    End Function
+    
+    
+    
+    ' ==== Proses file plant (pakai ByRef row) ====
+    Sub ProcessPlantFile(wsDest As Worksheet, filePath As String, targetDate As Date, mode As String, _
+                         ByRef row As Long, Optional DebugMode As Boolean = False)
+    
+        Dim xlApp As Object, xlWb As Object, xlWs As Worksheet
+        Dim dictProducts As Object, dictDescriptions As Object
+        Dim prodCol As Long, inputCol As Long, descCol1 As Long, descCol2 As Long
+        Dim foundProdCol As Boolean, foundInputCol As Boolean
+        Dim inputTotal As Double
+        Dim joinedProducts As String, joinedDescriptions As String
+        Dim currentLabel As String, headerRow1 As Long, headerRow2 As Long
+        
+        If filePath = "" Then
+            Debug.Print "File tidak ditemukan untuk mode: " & mode
+            Exit Sub
+        End If
+        
+        Debug.Print "Memproses file: " & filePath & " [Mode: " & mode & "]"
+        
+        Set xlApp = CreateObject("Excel.Application")
+        xlApp.Visible = False
+        Set xlWb = xlApp.Workbooks.Open(filePath, ReadOnly:=True)
+        
+        For Each xlWs In xlWb.Sheets
+            Debug.Print "  Sheet: " & xlWs.Name
+            Set dictProducts = CreateObject("Scripting.Dictionary")
+            Set dictDescriptions = CreateObject("Scripting.Dictionary")
+            inputTotal = 0
+            foundProdCol = False: foundInputCol = False
+            
+            ' --- Tentukan header & kolom berdasarkan mode ---
+            Select Case True
+                Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*scd*"
+                    currentLabel = "SCD Plant": headerRow1 = 9: headerRow2 = 10: descCol1 = 76: descCol2 = 92
+                
+                Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*ie*"
+                    currentLabel = "IE-FAT Plant": headerRow1 = 6: headerRow2 = 7: descCol1 = 48: descCol2 = 0
+                
+                Case mode = "SCD/IE/HYD" And LCase(xlWs.Name) Like "*hyd*"
+                    currentLabel = "Hydrogenation": headerRow1 = 9: headerRow2 = 10: descCol1 = 51: descCol2 = 0
+                
+                Case mode = "CBS" And LCase(xlWs.Name) Like "*scd-cbs*"
+                    currentLabel = "SCD CBS Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 76: descCol2 = 92
+                
+                Case mode = "CBS" And LCase(xlWs.Name) Like "*hydro 2*"
+                    currentLabel = "HYD CBS": headerRow1 = 5: headerRow2 = 6: descCol1 = 48: descCol2 = 0
+                
+                Case mode = "CBS" And LCase(xlWs.Name) Like "pko-fract*"
+                    currentLabel = "PKO-FRACT Plant": headerRow1 = 8: headerRow2 = 9: descCol1 = 48: descCol2 = 92
+                
+                Case Else
+                    Debug.Print "    >> Sheet dilewati."
+                    GoTo NextSheet
+            End Select
+            
+            ' --- Cari kolom ---
+            Call FindColumns(xlWs, headerRow1, headerRow2, prodCol, foundProdCol, inputCol, foundInputCol)
+            
+            ' --- Kumpulkan data ---
+            CollectData xlWs, targetDate, prodCol, inputCol, descCol1, descCol2, _
+                        dictProducts, dictDescriptions, inputTotal, foundProdCol, foundInputCol, DebugMode
+            
+            ' --- Output ke sheet utama (pakai row ByRef) ---
+            joinedProducts = JoinDictionaryKeys(dictProducts)
+            joinedDescriptions = JoinDictionaryKeys(dictDescriptions)
+            
+            wsDest.Cells(row, 1).Value = currentLabel
+            row = row + 1
+            
+            If inputTotal > 0 Then
+                wsDest.Cells(row, 1).Value = "Running : " & IIf(joinedProducts <> "", joinedProducts, "-")
+                row = row + 1
+                wsDest.Cells(row, 1).Value = "Input Processed : " & Format(inputTotal / 1000, "0") & " Ton"
+                row = row + 1
+                If joinedDescriptions <> "" Then
+                    wsDest.Cells(row, 1).Value = joinedDescriptions
+                    row = row + 1
+                End If
+            Else
+                wsDest.Cells(row, 1).Value = "Stop Plant"
+                row = row + 1
+                wsDest.Cells(row, 1).Value = "Fit to PPIC Planning"
+                row = row + 1
+            End If
+            
+            row = row + 1   ' baris kosong antar plant
+            
+NextSheet:
+        Next xlWs
+        
+        xlWb.Close False
+        xlApp.Quit
+    End Sub
+    
+    Sub FindColumns(ws As Worksheet, hdrRow1 As Long, hdrRow2 As Long, _
+                    ByRef prodCol As Long, ByRef foundProd As Boolean, _
+                    ByRef inputCol As Long, ByRef foundInput As Boolean)
+    
+        Dim i As Long, maxCol As Long
+        Dim h1 As String, h2 As String
+        Dim headerCombo As String
+    
+        ' Cari kolom terakhir di baris header
+        maxCol = ws.Cells(hdrRow1, ws.Columns.Count).End(xlToLeft).Column
+    
+        For i = 1 To maxCol
+            ' Ambil header baris 1 & 2 (handle merge)
+            h1 = LCase(Trim(ws.Cells(hdrRow1, i).MergeArea.Cells(1, 1).Value))
+            h2 = LCase(Trim(ws.Cells(hdrRow2, i).MergeArea.Cells(1, 1).Value))
+            headerCombo = h1 & " > " & h2
+    
+            ' ==== Cari kolom product berdasarkan kombinasi header ====
+            Select Case True
+                Case h1 Like "*product*" And h2 Like "*refine*"
+                    prodCol = i: foundProd = True
+                Case h1 Like "*product*" And h2 Like "*hydrogenated*"
+                    prodCol = i: foundProd = True
+                Case h1 Like "*product*" And h2 Like "*quality*"
+                    prodCol = i: foundProd = True
+                Case h1 Like "*product*" And h2 Like "*fractination*"
+                    prodCol = i: foundProd = True
+            End Select
+    
+            ' ==== Cari kolom input (sesuaikan pola yang kamu mau) ====
+            If h1 Like "*input*" Then
+                inputCol = i: foundInput = True
+            End If
+    
+            ' Debug untuk cek header yang dibaca
+            Debug.Print "Col " & i & ": " & headerCombo
+        Next i
+    End Sub
+    
+    
+    ' ==== Ambil data produk & input (versi perbaikan) ====
+    Sub CollectData(ws As Object, targetDate As Date, prodCol As Long, inputCol As Long, _
+                    descCol1 As Long, descCol2 As Long, _
+                    dictProducts As Object, dictDescriptions As Object, _
+                    ByRef inputTotal As Double, foundProdCol As Boolean, foundInputCol As Boolean, _
+                    Optional DebugMode As Boolean = False)
+    
+        Dim r As Long, lastRow As Long
+        Dim prod As String, desc As String, cellDate As Variant
+        
+        ' pakai prodCol kalau ada, biar tidak stop di kolom kosong
+        If prodCol > 0 Then
+            lastRow = ws.Cells(ws.Rows.Count, prodCol).End(xlUp).row
+        ElseIf inputCol > 0 Then
+            lastRow = ws.Cells(ws.Rows.Count, inputCol).End(xlUp).row
+        Else
+            lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+        End If
+        
+        For r = 1 To lastRow
+            cellDate = ws.Cells(r, 1).Value
+            If IsDate(cellDate) Then
+                If Int(cellDate) = Int(targetDate) Then
+                    ' --- produk ---
+                    If foundProdCol Then
+                        prod = Trim(ws.Cells(r, prodCol).Value)
+                        If prod <> "" Then
+                            If Not dictProducts.Exists(prod) Then dictProducts.Add prod, 1
+                        End If
+                    End If
+                    
+                    ' --- input ---
+                    If foundInputCol Then
+                        If IsNumeric(ws.Cells(r, inputCol).Value) Then
+                            inputTotal = inputTotal + ws.Cells(r, inputCol).Value
+                        End If
+                    End If
+                    
+                    ' --- deskripsi tambahan ---
+            If descCol1 > 0 Then
+                desc = Trim(ws.Cells(r, descCol1).Value)
+                If desc <> "" And desc <> "0" Then
+                    If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
+                End If
+            End If
+            
+            If descCol2 > 0 Then
+                desc = Trim(ws.Cells(r, descCol2).Value)
+                If desc <> "" And desc <> "0" Then
+                    If Not dictDescriptions.Exists(desc) Then dictDescriptions.Add desc, 1
+                End If
+            End If
+    
+                End If
+            End If
+        Next r
+    End Sub
+    
+    
+    ' ==== Join dictionary keys jadi string ====
+    Function JoinDictionaryKeys(dict As Object) As String
+        Dim key As Variant, arr() As String, i As Long
+        If dict.Count = 0 Then Exit Function
+        ReDim arr(0 To dict.Count - 1)
+        i = 0
+        For Each key In dict.Keys
+            arr(i) = key
+            i = i + 1
+        Next
+        JoinDictionaryKeys = Join(arr, ", ")
+    End Function
+    
+    
+    
+    Sub GenerateBIOReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+        Dim wb As Workbook, ws As Worksheet
+        Dim matchingRows As Collection, r As Variant
+        Dim lastRow As Long, i As Long
+        Dim cell As Range, mergeVal As Variant
+        Dim feedKg As Double, fameKg As Double
+        Dim glyKgPerMT As Variant, fattyKgPerMT As Variant
+        Dim methanolVal As Variant, smVal As Variant
+        Dim steamVal As Variant, electVal As Variant
+        Dim firstMatchRow As Long, dataRow As Long
+        Dim val As Variant, tempVal As Variant
+    
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+        ' Cari baris tanggal target
+        Set matchingRows = FindMatchingRows(ws, "A", 10, targetDate)
+        If matchingRows.Count = 0 Then
+            wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+        dataRow = matchingRows(1)
+    
+     ' Ambil baris pertama yang match tanggal untuk nilai awal
+    dataRow = CLng(matchingRows(1))
+    
+    ' Feed
+    tempVal = GetCellValBio(ws, dataRow, "FEED", "Flow meter", "TOTAL", "Kg")
+    If IsNumeric(tempVal) Then
+        feedKg = tempVal
+    Else
+        feedKg = 0
+    End If
+    
+    ' Fame
+    tempVal = GetCellValBio(ws, dataRow, "Crude Fame", "Flow Meter", "", "Kg")
+    If IsNumeric(tempVal) Then
+        fameKg = tempVal
+    Else
+        fameKg = 0
+    End If
+    
+    ' Crudegly per MT
+    tempVal = GetCellValBio(ws, dataRow, "Crude Glycerine", "Flow meter", "", "Kg/Ton Feed")
+    If IsNumeric(tempVal) Then
+        glyKgPerMT = tempVal
+    Else
+        glyKgPerMT = 0
+    End If
+    
+    ' Fatty per MT
+    tempVal = GetCellValBio(ws, dataRow, "Fatty Matter", "Flow meter", "", "Kg/Ton Feed")
+    If IsNumeric(tempVal) Then
+        fattyKgPerMT = tempVal
+    Else
+        fattyKgPerMT = 0
+    End If
+    
+    ' Consumption - Methanol
+    tempVal = GetCellValBio(ws, dataRow, "Methanol", "flowmeter", "Kg/Ton Feed", "")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then
+        methanolVal = tempVal
+    End If
+    
+    ' Consumption - Sodium Methylate
+    tempVal = GetCellValBio(ws, dataRow, "Sodium Methylate", "Flow meter", "", "Kg/Ton Feed")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then
+        smVal = tempVal
+    End If
+    
+    ' Consumption - Steam
+    tempVal = GetCellValBio(ws, dataRow, "Steam", "Flow meter", "", "Kg/Ton Feed")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then
+        steamVal = tempVal
+    End If
+    
+    ' Consumption - Electricity
+    tempVal = GetCellValBio(ws, dataRow, "Electricity", "Flow meter", "", "Kwh/Ton Feed")
+    If Not IsError(tempVal) And IsNumeric(tempVal) Then
+        electVal = tempVal
+    End If
+    
+    ' Downtime (teks) - gabung semua kolom bernama "Description"
+    Dim col As Long, lastCol As Long
+    Dim tempList As Collection, cellVal As String
+    Set tempList = New Collection
+    
+    lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column ' header di baris 7, sesuaikan
+    
+    For col = 1 To lastCol
+        If Trim(LCase(ws.Cells(7, col).Value)) = "description" Then
+            cellVal = Trim(ws.Cells(dataRow, col).Value)
+            If Len(cellVal) > 0 Then tempList.Add cellVal
+        End If
+    Next col
+    
+    If tempList.Count > 0 Then
+    
+        For i = 1 To tempList.Count
+            If i = 1 Then
+                downtimeVal = tempList(i)
+            Else
+                downtimeVal = downtimeVal & " / " & tempList(i)
+            End If
+        Next i
+    Else
+        downtimeVal = ""
+    End If
+    
+    
+    Debug.Print "Total feedKg: " & feedKg
+    Debug.Print "Total fameKg: " & fameKg
+    Debug.Print "Gly per MT: " & glyKgPerMT
+    Debug.Print "Fatty per MT: " & fattyKgPerMT
+    
+    
+    
+    ' === Output ke sheet target ===
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel
+        row = row + 1
+    
+        If feedKg > 0 Then
+            ' --- Normal output ---
+            .Cells(row, 1).Value = "Quantity": row = row + 1
+            .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+            .Cells(row, 1).Value = "Crude FAME : " & Round(fameKg / 1000, 0) & " MT": row = row + 1
+    
+            If IsNumeric(glyKgPerMT) Then
+                .Cells(row, 1).Value = "Crude Glycerin : " & Format(glyKgPerMT, "0.00") & " kg/MT Feed"
+            Else
+                .Cells(row, 1).Value = "Crude Glycerin : N/A"
+            End If
+            row = row + 1
+    
+            If IsNumeric(fattyKgPerMT) Then
+                .Cells(row, 1).Value = "Fatty Matter : " & Format(fattyKgPerMT, "0.00") & " kg/MT Feed"
+            Else
+                .Cells(row, 1).Value = "Fatty Matter : N/A"
+            End If
+            row = row + 1
+    
+            .Cells(row, 1).Value = "Consumption:": row = row + 1
+    
+            If IsNumeric(methanolVal) Then
+                .Cells(row, 1).Value = "Methanol : " & Format(methanolVal, "0.00") & " kg/ton Feed"
+            Else
+                .Cells(row, 1).Value = "Methanol : N/A"
+            End If
+            row = row + 1
+    
+            If IsNumeric(smVal) Then
+                .Cells(row, 1).Value = "Sodium Methylate : " & Format(smVal, "0.00") & " kg/ton Feed"
+            Else
+                .Cells(row, 1).Value = "Sodium Methylate : N/A"
+            End If
+            row = row + 1
+    
+            If IsNumeric(steamVal) Then
+                .Cells(row, 1).Value = "Steam : " & Format(steamVal, "0.00") & " kg/ton Feed"
+            Else
+                .Cells(row, 1).Value = "Steam : N/A"
+            End If
+            row = row + 1
+    
+            If IsNumeric(electVal) Then
+                .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.00") & " kWh/ton Feed"
+            Else
+                .Cells(row, 1).Value = "Electricity : N/A"
+            End If
+            row = row + 1
+        End If
+        
+        ' --- Downtime tetap ditulis meskipun Feed = 0 ---
+        If Len(Trim(downtimeVal)) > 0 Then
+            .Cells(row, 1).Value = downtimeVal
+            row = row + 1
+        End If
+        row = row + 1
+    End With
+    
+    End Sub
+    
+    Function GetCellValBio(ws As Worksheet, targetRow As Long, _
+                        header1 As String, header2 As String, _
+                        header3 As String, header4 As String, _
+                        Optional headerRow1 As Long = 7, _
+                        Optional headerRow2 As Long = 8, _
+                        Optional headerRow3 As Long = 9, _
+                        Optional headerRow4 As Long = 10) As Double
+    
+        Dim col As Long, lastCol As Long
+        Dim val1 As String, val2 As String, val3 As String, val4 As String
+        Dim h1 As String, h2 As String, h3 As String, h4 As String
+    
+        On Error GoTo ErrorHandler
+    
+        lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+    
+        h1 = LCase(Trim(header1))
+        h2 = LCase(Trim(header2))
+        h3 = LCase(Trim(header3))
+        h4 = LCase(Trim(header4))
+    
+        For col = 1 To lastCol
+            val1 = LCase(Trim(GetMergedHeaderValue(ws, headerRow1, col)))
+            val2 = LCase(Trim(GetMergedHeaderValue(ws, headerRow2, col)))
+            val3 = LCase(Trim(GetMergedHeaderValue(ws, headerRow3, col)))
+            val4 = LCase(Trim(GetMergedHeaderValue(ws, headerRow4, col)))
+    
+            ' Khusus Crude Fame: baris 8 & 9 merge (anggap val2 kosong, hanya gunakan val3)
+            If InStr(val1, "crude fame") > 0 And _
+               InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
+                GetCellValBio = CDbl(ws.Cells(targetRow, col).Value)
+                Exit Function
+            End If
+    
+            ' Umum: semua header cocok secara longgar
+            If InStr(val1, h1) > 0 And InStr(val2, h2) > 0 And _
+               InStr(val3, h3) > 0 And InStr(val4, h4) > 0 Then
+                GetCellValBio = CDbl(ws.Cells(targetRow, col).Value)
+                Exit Function
+            End If
+        Next col
+    
+        GetCellValBio = 0
+        Exit Function
+    
+ErrorHandler:
+        Debug.Print "Hasil GetCellVal: ERROR"
+        GetCellValBio = 0
+    End Function
+    
+    
+    
+    
+    Function GetMergedHeaderValue(ws As Worksheet, headerRow As Long, col As Long) As String
+        Dim cell As Range
+        Set cell = ws.Cells(headerRow, col)
+    
+        ' Jika sel kosong, cek apakah bagian dari merge
+        If IsEmpty(cell.Value) And cell.MergeCells Then
+            GetMergedHeaderValue = cell.MergeArea.Cells(1, 1).Value
+        Else
+            GetMergedHeaderValue = cell.Value
+        End If
+    End Function
+    
+    
+    
+    
+    ' Fungsi bantu untuk mengambil nilai header dengan mempertimbangkan merged cells
+    Function GetMergedHeader(ws As Worksheet, headerRow As Long, col As Long) As String
+        Dim val As String
+        val = Trim(ws.Cells(headerRow, col).Value)
+        
+        If val = "" Then
+            ' Cari ke atas jika cell kosong karena merged
+            Do While val = "" And headerRow > 1
+                headerRow = headerRow - 1
+                val = Trim(ws.Cells(headerRow, col).Value)
+            Loop
+        End If
+        
+        GetMergedHeader = val
+    End Function
+    
+    
+    
+    
+    
+    Function GetTextValBio(ws As Worksheet, targetRow As Long, ParamArray headers() As Variant) As String
+        Dim headerRow1 As Long: headerRow1 = 8
+        Dim headerRow2 As Long: headerRow2 = 9
+        Dim col As Long
+        Dim i As Long, j As Long
+        Dim lastCol As Long: lastCol = ws.Cells(headerRow1, ws.Columns.Count).End(xlToLeft).Column
+    
+        For col = 1 To lastCol
+            j = 0
+            For i = LBound(headers) To UBound(headers)
+                Dim headerText As String
+                If j Mod 2 = 0 Then
+                    headerText = LCase(Trim(ws.Cells(headerRow1, col).Value))
+                Else
+                    headerText = LCase(Trim(ws.Cells(headerRow2, col).Value))
+                End If
+    
+                If InStr(1, headerText, LCase(headers(i)), vbTextCompare) > 0 Then
+                    j = j + 1
+                Else
+                    Exit For
+                End If
+            Next i
+    
+            If j = UBound(headers) + 1 Then
+                GetTextVal = Trim(ws.Cells(targetRow, col).Value)
+                Exit Function
+            End If
+        Next col
+    
+        GetTextVal = "" ' Default jika tidak ketemu
+    End Function
+    
+    ' ==== Fungsi Cari Baris Tanggal ====
+    Function FindMatchingRows(ws As Worksheet, colDate As String, startRow As Long, targetDate As Date) As Collection
+        Dim matchingRows As New Collection
+        Dim lastRow As Long, i As Long
+        Dim cell As Range, mergeVal As Variant
+        
+        lastRow = ws.Cells(ws.Rows.Count, colDate).End(xlUp).row
+        
+        For i = startRow To lastRow
+            Set cell = ws.Cells(i, colDate)
+            If cell.MergeCells Then
+                mergeVal = cell.MergeArea.Cells(1, 1).Value
+            Else
+                mergeVal = cell.Value
+            End If
+            
+            If IsDate(mergeVal) Then
+                ' Bandingkan hanya tanggalnya (abaikan jam)
+                If Int(CDate(mergeVal)) = targetDate Then
+                    matchingRows.Add i
+                End If
+            End If
+        Next i
+        
+        Set FindMatchingRows = matchingRows
+    End Function
+    
+    
+    Sub GenerateCLRReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+        Dim wb As Workbook, ws As Worksheet
+        Dim matchingRows As Collection
+        Dim cell As Range, mergeVal As Variant
+        Dim lastRow As Long, i As Long, dataRow As Long
+        Dim feedKg As Double, fameKg As Double
+        Dim electVal As Variant, filterAidVal As Variant, waterVal As Variant
+        Dim tempVal As Variant
+        
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+        Set matchingRows = New Collection
+        
+        ' Cari baris dengan tanggal target
+        lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+        For i = 10 To lastRow
+            Set cell = ws.Cells(i, 1)
+            If cell.MergeCells Then
+                mergeVal = cell.MergeArea.Cells(1, 1).Value
+            Else
+                mergeVal = cell.Value
+            End If
+            
+            If IsDate(mergeVal) Then
+                If CDate(mergeVal) = targetDate Then
+                    matchingRows.Add i
+                End If
+            End If
+        Next i
+        
+        ' Jika tidak ditemukan
+        If matchingRows.Count = 0 Then
+            wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+        
+        ' Ambil baris pertama yang match
+        dataRow = CLng(matchingRows(1))
+        
+        ' Feed
+        tempVal = GetCellValBio(ws, dataRow, "Feed", "Flow meter", "", "Kg")
+        If IsNumeric(tempVal) Then feedKg = tempVal Else feedKg = 0
+        
+        ' FAME
+        tempVal = GetCellValBio(ws, dataRow, "FAME ", "Flow meter", "", "Kg")
+        If IsNumeric(tempVal) Then fameKg = tempVal Else fameKg = 0
+        
+        ' Electricity
+        tempVal = GetCellValBio(ws, dataRow, "Electricity", "Flow meter", "", "kWh/ton Feed")
+        If Not IsError(tempVal) And IsNumeric(tempVal) Then electVal = tempVal
+        
+        ' Filter Aid
+        tempVal = GetCellValBio(ws, dataRow, "Filter Aid", "", "Kg/ Ton Feed", "")
+        If Not IsError(tempVal) And IsNumeric(tempVal) Then filterAidVal = tempVal
+        
+        ' Water
+        tempVal = GetCellValBio(ws, dataRow, "Water", "Flow meter", "", "M3/ton Feed")
+        If Not IsError(tempVal) And IsNumeric(tempVal) Then waterVal = tempVal
+        
+        ' Downtime (teks) - gabung semua kolom bernama "Description"
+    Dim col As Long, lastCol As Long
+    Dim tempList As Collection, cellVal As String
+    Set tempList = New Collection
+    
+    lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column ' header di baris 7, sesuaikan
+    
+    For col = 1 To lastCol
+        If Trim(LCase(ws.Cells(7, col).Value)) = "description" Then
+            cellVal = Trim(ws.Cells(dataRow, col).Value)
+            If Len(cellVal) > 0 Then tempList.Add cellVal
+        End If
+    Next col
+    
+    If tempList.Count > 0 Then
+    
+        For i = 1 To tempList.Count
+            If i = 1 Then
+                downtimeVal = tempList(i)
+            Else
+                downtimeVal = downtimeVal & " / " & tempList(i)
+            End If
+        Next i
+    Else
+        downtimeVal = ""
+    End If
+        
+    With wsTarget
+        .Cells(row, 1).Value = plantLabel
+        row = row + 1
+    
+        If feedKg > 0 Then
+            .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+            .Cells(row, 1).Value = "FAME : " & Round(fameKg / 1000, 0) & " MT": row = row + 1
+    
+            ' Electricity
+            If IsNumeric(electVal) Then
+                .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.0") & " Kwh/MT Crude FAME"
+            Else
+                .Cells(row, 1).Value = "Electricity : N/A"
+            End If
+            row = row + 1
+    
+            ' Filter Aid
+            If IsNumeric(filterAidVal) Then
+                .Cells(row, 1).Value = "Filter Aid : " & Format(filterAidVal, "0.0") & " Kg/MT Crude FAME"
+            Else
+                .Cells(row, 1).Value = "Filter Aid : N/A"
+            End If
+            row = row + 1
+    
+            ' Water
+            If IsNumeric(waterVal) Then
+                .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.0") & " m3/MT Crude FAME"
+            Else
+                .Cells(row, 1).Value = "Water : N/A"
+            End If
+            row = row + 1
+        End If
+    
+        ' Downtime selalu ditulis, meski Feed = 0
+        If Len(Trim(downtimeVal)) > 0 Then
+            .Cells(row, 1).Value = downtimeVal
+            row = row + 1
+        End If
+    
+        row = row + 1
+    End With
+        
+        wb.Close False
+    End Sub
+    
+    
+    
+    
+    Sub GenerateGlycerineReport(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+        Dim wb As Workbook, ws As Worksheet
+        Dim matchingRows As Collection
+        Dim cell As Range, mergeVal As Variant
+        Dim lastRow As Long, i As Long, dataRow As Long
+        Dim feedKg As Double, refineGly As Double, yellowGly As Double
+        Dim naohVal As Variant, steamVal As Variant, electVal As Variant
+        Dim downtimeVal As String
+        Dim tempVal As Variant
+        
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+        ' Cari baris tanggal target
+        Set matchingRows = FindMatchingRows(ws, "A", 10, targetDate)
+        If matchingRows.Count = 0 Then
+            wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+        dataRow = matchingRows(1)
+        
+        ' Ambil baris pertama yang cocok
+        dataRow = CLng(matchingRows(1))
+        
+        ' Feed
+        tempVal = GetCellValBio(ws, dataRow, "Feed", "Flow Meter", "", "Kg")
+        If IsNumeric(tempVal) Then feedKg = tempVal Else feedKg = 0
+        
+        ' Refine Gly
+        tempVal = GetCellValBio(ws, dataRow, "Refined Glycerine", "Flow Meter", "", "kg")
+        If IsNumeric(tempVal) Then refineGly = tempVal Else refineGly = 0
+        
+        ' Yellow Gly
+        tempVal = GetCellValBio(ws, dataRow, "Yellow Glycerine", "Flow Meter", "", "Kg")
+        If IsNumeric(tempVal) Then yellowGly = tempVal Else yellowGly = 0
+        
+        ' NaOH
+        tempVal = GetCellValBio(ws, dataRow, "NaOH", "Flow Meter", "", "Kg/Ton Feed")
+        If Not IsError(tempVal) And IsNumeric(tempVal) Then naohVal = tempVal
+        
+        ' Steam
+        tempVal = GetCellValBio(ws, dataRow, "Steam", "Flow Meter", "", "Kg/Ton Feed")
+        If Not IsError(tempVal) And IsNumeric(tempVal) Then steamVal = tempVal
+        
+        ' Electric
+        tempVal = GetCellValBio(ws, dataRow, "Electricity", "Flow Meter", "", "Kwh/Ton Feed")
+        If Not IsError(tempVal) And IsNumeric(tempVal) Then electVal = tempVal
+        
+    ' Downtime (teks) - gabung semua kolom bernama "Description"
+    Dim col As Long, lastCol As Long
+    Dim tempList As Collection, cellVal As String
+    Set tempList = New Collection
+    
+    lastCol = ws.Cells(7, ws.Columns.Count).End(xlToLeft).Column ' header di baris 7, sesuaikan
+    
+    For col = 1 To lastCol
+        If Trim(LCase(ws.Cells(7, col).Value)) = "description" Then
+            cellVal = Trim(ws.Cells(dataRow, col).Value)
+            If Len(cellVal) > 0 Then tempList.Add cellVal
+        End If
+    Next col
+    
+    If tempList.Count > 0 Then
+    
+        For i = 1 To tempList.Count
+            If i = 1 Then
+                downtimeVal = tempList(i)
+            Else
+                downtimeVal = downtimeVal & " / " & tempList(i)
+            End If
+        Next i
+    Else
+        downtimeVal = ""
+    End If
+        
+            ' Output
+        With wsTarget
+            .Cells(row, 1).Value = plantLabel: row = row + 1
+            If feedKg > 0 Then
+            .Cells(row, 1).Value = "Feed : " & Round(feedKg / 1000, 0) & " MT": row = row + 1
+            .Cells(row, 1).Value = "Refine Glycerine : " & Round(refineGly / 1000, 0) & " MT": row = row + 1
+            .Cells(row, 1).Value = "Yellow Glycerine : " & Round(yellowGly / 1000, 0) & " MT": row = row + 1
+                
+            If IsNumeric(naohVal) Then
+                .Cells(row, 1).Value = "NaOH : " & Format(naohVal, "0.00") & " Kg/MT"
+            Else
+                .Cells(row, 1).Value = "NaOH : N/A"
+            End If
+            row = row + 1
+            
+            If IsNumeric(steamVal) Then
+                .Cells(row, 1).Value = "Steam : " & Format(steamVal, "#,##0.00") & " Kg/MT"
+            Else
+                .Cells(row, 1).Value = "Steam : N/A"
+            End If
+            row = row + 1
+            
+            If IsNumeric(electVal) Then
+                .Cells(row, 1).Value = "Electric : " & Format(electVal, "#,##0.00") & " Kwh/MT"
+            Else
+                .Cells(row, 1).Value = "Electric : N/A"
+            End If
+            row = row + 1
+            
+            .Cells(row, 1).Value = "" & downtimeVal
+            row = row + 2
+            
+            Else
+            .Cells(row, 1).Value = "Stop Plant": row = row + 1
+            .Cells(row, 1).Value = "" & downtimeVal
+            row = row + 2
+            End If
+        End With
+      
+        wb.Close False
+    End Sub
+    
+    Sub GenerateMarshoPlantReport(filePath As String, sheetSource As String, _
+                                  wsTarget As Worksheet, ByRef row As Long, targetDate As Date, _
+                                  wsSummary As Worksheet, ByRef sumRow As Long)
+    
+        Dim wb As Workbook, ws As Worksheet
+        Dim col As Long, lastCol As Long
+        Dim dataCol As Long
+        Dim found As Boolean
+        Dim targetText As String
+        Dim planValue As Variant, actualValue As Variant, perfValue As Variant
+        Dim curRow As Long, lastRow As Long
+        Dim machineName As String
+        Dim validMachines As Variant, m As Variant
+        Dim cellVal As String
+        Dim cellComment As String
+        
+        ' --- tambahan variabel untuk running, total, dan list eff ---
+        Dim runningCount As Long, totalMachines As Long
+        Dim totalPlan As Double, totalActual As Double
+        Dim effList As Collection
+        Set effList = New Collection
+        
+        ' --- daftar mesin yang diambil ---
+        validMachines = Array("UGS I", "Chemtech", "Chemtech 2", "UGS 6", "UGS II", "UGS III", "UGS V")
+        totalMachines = UBound(validMachines) - LBound(validMachines) + 1
+        
+        ' buka workbook dan sheet
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+        
+        ' --- format tanggal target ---
+        targetText = Format(targetDate, "d - mmm")
+        
+        ' --- cari kolom tanggal di baris 5 ---
+        lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+        found = False
+        For col = 1 To lastCol
+            If Trim(ws.Cells(5, col).Text) = targetText Then
+                dataCol = col
+                found = True
+                Exit For
+            End If
+        Next col
+        
+        If Not found Then
+            wsTarget.Cells(row, 1).Value = "Marsho Plant - Tanggal tidak ditemukan (" & targetText & ")"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+        
+        ' --- judul & header ---
+        wsTarget.Cells(row, 1).Value = "Marsho Plant (" & targetText & ")"
+        row = row + 1
+        wsTarget.Cells(row, 1).Value = "Mesin"
+        wsTarget.Cells(row, 2).Value = "Plan"
+        wsTarget.Cells(row, 3).Value = "Actual"
+        wsTarget.Cells(row, 4).Value = "Performance (%)"
+        wsTarget.Cells(row, 5).Value = "Comment"
+        row = row + 1
+        
+        machineName = ""
+        curRow = 6
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+        
+        ' --- loop baris sampai akhir sheet ---
+        Do While curRow <= lastRow
+            cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
+            
+            ' kalau baris ini adalah nama mesin valid
+            For Each m In validMachines
+                If StrComp(cellVal, m, vbTextCompare) = 0 Then
+                    machineName = m
+                    Exit For
+                End If
+            Next m
+    
+            ' kalau baris ini adalah "IN TONASE" dan ada mesin aktif
+            If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
+                planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
+                actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
+                
+                ' hitung performance (%)
+                If planValue <> 0 Then
+                    perfValue = Round((actualValue / planValue) * 100, 2)
+                Else
+                    perfValue = 0
+                End If
+                
+                ' --- ambil comment dari baris produk (di antara nama mesin dan IN TONASE) ---
+                cellComment = ""
+                Dim r As Long
+                If perfValue <= 100 Then
+                    r = curRow - 1
+                    Do While r > 1
+                        If StrComp(Trim(ws.Cells(r, 1).MergeArea.Cells(1, 1).Text), machineName, vbTextCompare) = 0 Then Exit Do
+                        If Not ws.Cells(r, dataCol + 1).Comment Is Nothing Then
+                            Dim fullComment As String, words() As String
+                            fullComment = Trim(ws.Cells(r, dataCol + 1).Comment.Text)
+                            words = Split(fullComment, " ")
+                            If UBound(words) <= 6 Then   ' max 6 kata
+                                If cellComment <> "" Then cellComment = cellComment & "; "
+                                cellComment = cellComment & fullComment
+                            End If
+                        End If
+                        r = r - 1
+                    Loop
+                End If
+                
+                ' tulis ke target
+                wsTarget.Cells(row, 1).Value = machineName
+                wsTarget.Cells(row, 2).Value = planValue
+                wsTarget.Cells(row, 3).Value = actualValue
+                wsTarget.Cells(row, 4).Value = perfValue
+                wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+                wsTarget.Cells(row, 5).Value = cellComment
+                
+                ' hitung running dan total
+                If actualValue > 0 Then runningCount = runningCount + 1
+                totalPlan = totalPlan + planValue
+                totalActual = totalActual + actualValue
+                
+                ' simpan eff ke collection (exclude 0)
+                If perfValue > 0 Then
+                    Dim rec(1 To 3) As Variant
+                    rec(1) = machineName
+                    rec(2) = perfValue
+                    rec(3) = cellComment
+                    effList.Add rec
+                End If
+                
+                row = row + 1
+                machineName = ""
+            End If
+            
+            curRow = curRow + 1
+        Loop
+        
+        row = row + 1
+        
+        ' --- summary running dan total ---
+         wsTarget.Cells(row, 1).Value = "Marsho Plant"
+        row = row + 1
+        wsTarget.Cells(row, 1).Value = "Running " & runningCount & " dari " & totalMachines & " Machine"
+        row = row + 1
+        wsTarget.Cells(row, 1).Value = "Plan vs Actual = " & _
+                                       Format(Round(totalPlan, 0), "0") & " / " & _
+                                       Format(Round(totalActual, 0), "0") & " Ton"
+        row = row + 1
+        
+        ' --- tampilkan 3 eff terendah ---
+        Dim effArr() As Variant, effCount As Long, i As Long, j As Long
+        effCount = effList.Count
+        
+        If effCount > 0 Then
+            ReDim effArr(1 To effCount, 1 To 3)
+            For i = 1 To effCount
+                effArr(i, 1) = effList(i)(1)
+                effArr(i, 2) = effList(i)(2)
+                effArr(i, 3) = effList(i)(3)
+            Next i
+            
+            ' sort ascending by perf
+            For i = 1 To effCount - 1
+                For j = i + 1 To effCount
+                    If effArr(j, 2) < effArr(i, 2) Then
+                        Dim tmp1 As String, tmp2 As Double, tmp3 As String
+                        tmp1 = effArr(i, 1): tmp2 = effArr(i, 2): tmp3 = effArr(i, 3)
+                        effArr(i, 1) = effArr(j, 1): effArr(i, 2) = effArr(j, 2): effArr(i, 3) = effArr(j, 3)
+                        effArr(j, 1) = tmp1: effArr(j, 2) = tmp2: effArr(j, 3) = tmp3
+                    End If
+                Next j
+            Next i
+            
+            ' tampilkan max 3
+            Dim topCount As Long
+            topCount = WorksheetFunction.Min(3, effCount)
+            For i = 1 To topCount
+                wsTarget.Cells(row, 1).Value = "eff " & effArr(i, 1) & " (" & _
+                                               Format(effArr(i, 2), "0.00") & "%)" & _
+                                               IIf(effArr(i, 3) <> "", " - " & effArr(i, 3), "")
+                row = row + 1
+            Next i
+            row = row + 1
+        End If
+    End Sub
+    
+    
+    Sub GenerateFillingPlantReport(filePath As String, sheetSource As String, _
+                                   wsTarget As Worksheet, ByRef row As Long, targetDate As Date, _
+                                   wsSummary As Worksheet, ByRef sumRow As Long)
+    
+        Dim wb As Workbook, ws As Worksheet
+        Dim col As Long, lastCol As Long, dataCol As Long
+        Dim found As Boolean, targetText As String
+        Dim planValue As Variant, actualValue As Variant, perfValue As Variant
+        Dim curRow As Long, lastRow As Long
+        Dim machineName As String
+        Dim validMachines As Variant, m As Variant
+        Dim cellVal As String, cellComment As String
+        
+        ' --- tambahan variabel untuk running, total, dan list eff ---
+        Dim runningCount As Long, totalMachines As Long
+        Dim thimPlan As Double, thimActual As Double, thimDowntime As String
+        Dim otherPlan As Double, otherActual As Double, otherDowntime As String
+        Dim effList As Collection
+        Set effList = New Collection
+        
+        ' --- daftar mesin Filling Plant ---
+        validMachines = Array("Thimonier 1", "Thimonier 2", "Thimonier 3", "Thimonier 4 (ASRS)", "Thimonier 5 (ASRS)", _
+                              "Thimonier 7", "Thimonier 9", "Thimonier 10", "Emec - 2L -5L", _
+                              "Emec - 18L (16 Nozzle)", "Emec -  BIB 18 L (I)", "Emec -  BIB 18 L (II)", _
+                              "Emec -  BIB 18 L (III)", "SERAC")
+        
+        ' hitung total mesin thimonier
+        totalMachines = 0
+        For Each m In validMachines
+            If InStr(1, m, "Thimonier", vbTextCompare) > 0 Then totalMachines = totalMachines + 1
+        Next m
+        
+        ' buka workbook dan sheet
+        Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+        Set ws = wb.Sheets(sheetSource)
+        
+        ' format tanggal target
+        targetText = Format(targetDate, "d - mmm")
+        
+        ' cari kolom tanggal di baris 5
+        lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+        found = False
+        For col = 1 To lastCol
+            If Trim(ws.Cells(5, col).Text) = targetText Then
+                dataCol = col
+                found = True
+                Exit For
+            End If
+        Next col
+        
+        If Not found Then
+            wsTarget.Cells(row, 1).Value = "Filling Plant - Tanggal tidak ditemukan (" & targetText & ")"
+            row = row + 2
+            wb.Close False
+            Exit Sub
+        End If
+        
+        ' inisialisasi
+        runningCount = 0
+        thimPlan = 0: thimActual = 0: thimDowntime = ""
+        otherPlan = 0: otherActual = 0: otherDowntime = ""
+        
+        ' judul & header
+        wsTarget.Cells(row, 1).Value = "Filling Plant (" & targetText & ")"
+        row = row + 1
+        wsTarget.Cells(row, 1).Value = "Mesin"
+        wsTarget.Cells(row, 2).Value = "Plan"
+        wsTarget.Cells(row, 3).Value = "Actual"
+        wsTarget.Cells(row, 4).Value = "Performance (%)"
+        wsTarget.Cells(row, 5).Value = "Comment"
+        row = row + 1
+        
+        machineName = ""
+        curRow = 6
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+        
+        ' loop isi sheet
+        Do While curRow <= lastRow
+            cellVal = Trim(ws.Cells(curRow, 1).MergeArea.Cells(1, 1).Text)
+            
+            ' cek nama mesin valid
+            For Each m In validMachines
+                If StrComp(cellVal, m, vbTextCompare) = 0 Then
+                    machineName = m
+                    Exit For
+                End If
+            Next m
+            
+            ' cek baris IN TONASE
+            If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
+                planValue = val(ws.Cells(curRow, dataCol).Value)
+                actualValue = val(ws.Cells(curRow, dataCol + 1).Value)
+                
+                If planValue <> 0 Then
+                    perfValue = Round((actualValue / planValue) * 100, 2)
+                Else
+                    perfValue = 0
+                End If
+                
+                ' comment
+                cellComment = ""
+                If perfValue <= 100 Then
+                    If Not ws.Cells(curRow, dataCol + 1).Comment Is Nothing Then
+                        cellComment = Trim(ws.Cells(curRow, dataCol + 1).Comment.Text)
+                    End If
+                End If
+                
+                ' tulis detail
+                wsTarget.Cells(row, 1).Value = machineName
+                wsTarget.Cells(row, 2).Value = planValue
+                wsTarget.Cells(row, 3).Value = actualValue
+                wsTarget.Cells(row, 4).Value = perfValue
+                wsTarget.Cells(row, 4).NumberFormat = "0.00""%"""
+                wsTarget.Cells(row, 5).Value = cellComment
+                row = row + 1
+                
+                ' hitung running khusus Thimonier
+                If InStr(1, machineName, "Thimonier", vbTextCompare) > 0 Then
+                    If actualValue > 0 Then runningCount = runningCount + 1
+                    thimPlan = thimPlan + planValue
+                    thimActual = thimActual + actualValue
+                    If thimDowntime = "" And cellComment <> "" Then thimDowntime = cellComment
+                Else
+                    otherPlan = otherPlan + planValue
+                    otherActual = otherActual + actualValue
+                    If otherDowntime = "" And cellComment <> "" Then otherDowntime = cellComment
+                End If
+                
+                ' simpan eff ke collection
+                If perfValue > 0 Then
+                    Dim rec(1 To 3) As Variant
+                    rec(1) = machineName
+                    rec(2) = perfValue
+                    rec(3) = cellComment
+                    effList.Add rec
+                End If
+                
+                machineName = ""
+            End If
+            
+            curRow = curRow + 1
+        Loop
+        
+        row = row + 1
+        
+        ' === summary ke wsSummary ===
+         wsTarget.Cells(row, 1).Value = "FILLING PLANT"
+        row = row + 1
+    wsTarget.Cells(row, 1).Value = "Run " & runningCount & " of " & totalMachines & " Thimmonier Machine"
+        row = row + 1
+        
+        wsTarget.Cells(row, 1).Value = "Thim Plan/Actual : " & _
+                                       Format(Round(thimPlan, 0), "0") & "/" & _
+                                       Format(Round(thimActual, 0), "0") & " Ton"
+        row = row + 1
+        wsTarget.Cells(row, 1).Value = "downtime: " & IIf(thimDowntime = "", "none", thimDowntime)
+        row = row + 1
+        
+        wsTarget.Cells(row, 1).Value = "Others Plan/Actual: " & _
+                                       Format(Round(otherPlan, 0), "0") & "/" & _
+                                       Format(Round(otherActual, 0), "0") & " Ton"
+        row = row + 1
+        wsTarget.Cells(row, 1).Value = "downtime: " & IIf(otherDowntime = "", "none", otherDowntime)
+        row = row + 2
+        
+         wb.Close False
+    End Sub
+    
+    
+    Function RoundNormal(ByVal x As Double, Optional digits As Long = 0) As Double
+        RoundNormal = Round(x, digits)
+    End Function
+    
+    ' Ambil angka dari teks "CPO process : 773 MT"
+    Function ExtractCPOVal(ByVal cellVal As String) As Double
+        Dim parts() As String, i As Long
+        ExtractCPOVal = 0
+        cellVal = Trim(cellVal)
+        If Len(cellVal) = 0 Then Exit Function
+        parts = Split(cellVal, " ")
+        For i = LBound(parts) To UBound(parts)
+            If IsNumeric(parts(i)) Then
+                ExtractCPOVal = CDbl(parts(i))
+                Exit Function
+            End If
+        Next i
+    End Function
+    
+    ' Scan sheet output, jumlahkan semua baris yang diawali "CPO process"
+    Sub SumCPOProcessed(ByVal wsDest As Worksheet, ByVal startRow As Long)
+        Dim lastRow As Long, i As Long, totalCPO As Double
+        Dim txt As String
+        lastRow = wsDest.Cells(wsDest.Rows.Count, 1).End(xlUp).row
+    
+        totalCPO = 0
+        For i = 1 To lastRow
+            txt = LCase$(Trim$(CStr(wsDest.Cells(i, 1).Value)))
+            ' Cari baris yang ada kata "cpo process"
+            If InStr(txt, "cpo process") > 0 Then
+                totalCPO = totalCPO + ExtractCPOVal(CStr(wsDest.Cells(i, 1).Value))
+            End If
+        Next i
+    
+        ' Format angka ribuan pakai titik (.)
+        wsDest.Cells(startRow, 1).Value = "TOTAL CPO PROCESSED = " & _
+                                          Format(totalCPO, "#,##0") & " MT"
+        wsDest.Cells(startRow, 1).Font.Bold = True
+    End Sub
+    
+ 
+
+ 
+ 
+
+' ========================
+' Cari file CPKO (fleksibel)
+' ========================
+Private Function CariFileCPKO(folderPath As String, bulanTahun As String) As String
+    Dim f As String, targetNama As String
+    targetNama = UCase("Daily Storage " & bulanTahun)   ' contoh: "DAILY STORAGE AGUSTUS 2025"
+    
+    f = Dir(folderPath & "*.xlsx")
+    Do While f <> ""
+        If InStr(1, UCase(f), targetNama) > 0 _
+           And InStr(1, UCase(f), "NON PALMITIC") > 0 Then
+           CariFileCPKO = folderPath & f
+           Exit Function
+        End If
+        f = Dir
+    Loop
+    CariFileCPKO = ""
+End Function
+
+
+' ========================
+' Nama bulan Indonesia
+' ========================
+Private Function GetIndonesianMonth(ByVal bulan As Integer, ByVal tahun As Integer) As String
+    Dim namaBulan As Variant
+    namaBulan = Array("", "Januari", "Februari", "Maret", "April", "Mei", "Juni", _
+                          "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    GetIndonesianMonth = namaBulan(bulan) & " " & tahun
+End Function
+
+
+' ========================
+' Ambil nilai CPO / CPKO
+' ========================
+Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, ByRef ffaValue As Double, ByRef totalStock As Double)
+    Dim wb As Workbook, ws As Worksheet
+    Dim i As Long, sumWeighted As Double, sumStock As Double
+    Dim colQty As String, colFFA As String, rowStart As Long, rowEnd As Long
+    
+    On Error GoTo ErrHandler
+    Debug.Print labelName & " >> cek file: " & filePath
+    
+    If Dir(filePath) = "" Then
+        Debug.Print labelName & " >> FILE TIDAK DITEMUKAN: " & filePath
+        ffaValue = 0: totalStock = 0
+        Exit Sub
+    End If
+    
+    ' coba attach kalau file sudah dibuka
+    On Error Resume Next
+    Set wb = GetObject(filePath)
+    On Error GoTo 0
+    If wb Is Nothing Then
+  Set wb = Workbooks.Open( _
+        fileName:=filePath, _
+        ReadOnly:=True, _
+        UpdateLinks:=0, _
+        IgnoreReadOnlyRecommended:=True, _
+        Notify:=False)
+    End If
+    
+    If wb Is Nothing Then
+        Debug.Print labelName & " >> GAGAL buka file (dikunci/error)."
+        ffaValue = 0: totalStock = 0
+        Exit Sub
+    End If
+    
+    On Error Resume Next
+    Set ws = wb.Sheets(sheetCode)
+    On Error GoTo ErrHandler
+    
+    If ws Is Nothing Then
+        Debug.Print labelName & " >> SHEET " & sheetCode & " TIDAK ADA"
+        ffaValue = 0: totalStock = 0
+    Else
+        If labelName = "CPO" Then
+            colQty = "G": colFFA = "I": rowStart = 8: rowEnd = 23
+        ElseIf labelName = "CPKO" Then
+            colQty = "F": colFFA = "H": rowStart = 8: rowEnd = 17
+        End If
+        
+        sumWeighted = 0: sumStock = 0
+        For i = rowStart To rowEnd
+            If IsNumeric(ws.Range(colQty & i).Value) And IsNumeric(ws.Range(colFFA & i).Value) Then
+                sumWeighted = sumWeighted + (ws.Range(colQty & i).Value * ws.Range(colFFA & i).Value)
+                sumStock = sumStock + ws.Range(colQty & i).Value
+            End If
+        Next i
+        
+        totalStock = sumStock
+        If sumStock > 0 Then
+            ffaValue = sumWeighted / sumStock
+        Else
+            ffaValue = 0
+        End If
+        Debug.Print labelName & " >> TotalStock=" & totalStock & ", FFA=" & ffaValue
+    End If
+    
+    wb.Close SaveChanges:=False
+    Exit Sub
+    
+ErrHandler:
+    Debug.Print labelName & " >> ERROR membuka file. " & Err.Description
+    ffaValue = 0: totalStock = 0
+    On Error Resume Next: wb.Close SaveChanges:=False
+End Sub
+
+ 
+    
+    
+    
+
