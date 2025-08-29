@@ -1,0 +1,182 @@
+Sub GenerateCPOCPKOStockReport()
+    Dim cpoFilePath As String, cpkoFilePath As String
+    Dim sheetName As String, todayDay As Integer, todayMonth As Integer, todayYear As Integer
+    Dim sheetCode As String
+    Dim wsTarget As Worksheet
+    Dim cpoFFA As Double, cpkoFFA As Double
+    Dim cpoTotal As Double, cpkoTotal As Double
+    Dim monthName As String
+    
+    todayDay = Day(Date - 1)
+    todayMonth = Month(Date - 1)
+    todayYear = Year(Date - 1)
+    sheetName = CStr(todayDay)              ' nama sheet output (misal "27")
+    sheetCode = Format(Date - 1, "ddmm")    ' sheet di file sumber (misal "2708")
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    ' --- Buat nama bulan Indonesia ---
+    monthName = GetIndonesianMonth(todayMonth, todayYear)   ' contoh: "Agustus 2025"
+    
+    ' File CPO (Palmitic)
+    cpoFilePath = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
+    
+    ' File CPKO (Non Palmitic)
+    cpkoFilePath = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\07. Daily Storage " & monthName & " (Non Palmitic Base).xlsx"
+    
+    ' --- Siapkan sheet target ---
+    On Error Resume Next
+    Set wsTarget = ThisWorkbook.Sheets(sheetName)
+    If wsTarget Is Nothing Then
+        Set wsTarget = ThisWorkbook.Sheets.Add(After:=Sheets(Sheets.Count))
+        wsTarget.Name = sheetName
+    Else
+        wsTarget.Cells.Clear
+    End If
+    On Error GoTo 0
+    
+    ' --- Hitung CPO ---
+    Call GetCPOCPKOValue(cpoFilePath, sheetCode, "CPO", cpoFFA, cpoTotal)
+    
+    ' --- Hitung CPKO ---
+    Call GetCPOCPKOValue(cpkoFilePath, sheetCode, "CPKO", cpkoFFA, cpkoTotal)
+
+' --- Tulis ke sheet target ---
+wsTarget.Range("A1").Value = "Tanggal : " & Format(Date - 1, "dd/mm/yyyy")
+wsTarget.Range("A2").Value = "CPO Stock : " & Format(cpoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpoFFA, "0.00")
+wsTarget.Range("A3").Value = "CPKO Stock : " & Format(cpkoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpkoFFA, "0.00")
+
+    
+    Application.ScreenUpdating = True
+    MsgBox "Laporan CPO/CPKO berhasil dibuat di sheet '" & sheetName & "'", vbInformation
+End Sub
+
+
+
+Private Function GetIndonesianMonth(ByVal bulan As Integer, ByVal tahun As Integer) As String
+    Dim namaBulan As Variant
+    namaBulan = Array("", "Januari", "Februari", "Maret", "April", "Mei", "Juni", _
+                          "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    GetIndonesianMonth = namaBulan(bulan) & " " & tahun
+End Function
+
+
+Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, ByRef ffaValue As Double, ByRef totalStock As Double)
+    Dim wb As Workbook, ws As Worksheet
+    Dim i As Long
+    Dim sumWeighted As Double, sumStock As Double
+    Dim colQty As String, colFFA As String
+    Dim rowStart As Long, rowEnd As Long
+    
+    On Error GoTo ErrHandler
+    Debug.Print labelName & " >> cek file: " & filePath
+    
+    If Dir(filePath) = "" Then
+        Debug.Print labelName & " >> FILE TIDAK DITEMUKAN"
+        ffaValue = 0
+        totalStock = 0
+        Exit Sub
+    End If
+    
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True, IgnoreReadOnlyRecommended:=True)
+    
+    On Error Resume Next
+    Set ws = wb.Sheets(sheetCode)
+    On Error GoTo ErrHandler
+    
+    If ws Is Nothing Then
+        Debug.Print labelName & " >> SHEET " & sheetCode & " TIDAK ADA"
+        ffaValue = 0
+        totalStock = 0
+    Else
+        ' Tentukan range sesuai label
+        If labelName = "CPO" Then
+            colQty = "G": colFFA = "I"
+            rowStart = 8: rowEnd = 23
+        ElseIf labelName = "CPKO" Then
+            colQty = "F": colFFA = "H"
+            rowStart = 8: rowEnd = 17
+        End If
+        
+        sumWeighted = 0
+        sumStock = 0
+        For i = rowStart To rowEnd
+            If IsNumeric(ws.Range(colQty & i).Value) And IsNumeric(ws.Range(colFFA & i).Value) Then
+                sumWeighted = sumWeighted + (ws.Range(colQty & i).Value * ws.Range(colFFA & i).Value)
+                sumStock = sumStock + ws.Range(colQty & i).Value
+            End If
+        Next i
+        
+        totalStock = sumStock
+        If sumStock > 0 Then
+            ffaValue = sumWeighted / sumStock
+        Else
+            ffaValue = 0
+        End If
+        Debug.Print labelName & " >> TotalStock=" & totalStock & ", FFA=" & ffaValue
+    End If
+    
+    wb.Close SaveChanges:=False
+    Exit Sub
+    
+ErrHandler:
+    Debug.Print labelName & " >> ERROR membuka file." & Err.Description
+    ffaValue = 0
+    totalStock = 0
+    On Error Resume Next
+    wb.Close SaveChanges:=False
+End Sub
+
+
+Private Function OpenWorkbookReadOnly(filePath As String) As Workbook
+    Dim wb As Workbook
+    
+    On Error Resume Next
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True, IgnoreReadOnlyRecommended:=True)
+    On Error GoTo 0
+    
+    If wb Is Nothing Then
+        Debug.Print "? Gagal membuka file (dikunci / error): " & filePath
+    Else
+        Debug.Print "? File berhasil dibuka ReadOnly: " & filePath
+    End If
+    
+    Set OpenWorkbookReadOnly = wb
+End Function
+
+If Dir(filePath) = "" Then
+    Debug.Print labelName & " >> FILE TIDAK DITEMUKAN: " & filePath
+    ffaValue = 0
+    totalStock = 0
+    Exit Sub
+End If
+
+On Error Resume Next
+Set wb = GetObject(filePath) ' coba attach ke file yang sedang dibuka
+If wb Is Nothing Then
+    ' kalau gagal, coba buka read-only
+    Set wb = Workbooks.Open(filePath, UpdateLinks:=0, ReadOnly:=True, IgnoreReadOnlyRecommended:=True)
+End If
+On Error GoTo ErrHandler
+Function CariFileCPKO(folderPath As String, bulan As String, tahun As String) As String
+    Dim f As String
+    Dim targetNama As String
+    targetNama = UCase("Daily Storage " & bulan & " " & tahun)
+    
+    f = Dir(folderPath & "*.xlsx")
+    Do While f <> ""
+        ' cek kalau nama file mengandung target + "NON PALMITIC"
+        If InStr(1, UCase(f), targetNama) > 0 _
+           And InStr(1, UCase(f), "NON PALMITIC") > 0 Then
+           
+           CariFileCPKO = folderPath & f
+           Exit Function
+        End If
+        f = Dir
+    Loop
+    
+    CariFileCPKO = ""
+End Function
+
+
