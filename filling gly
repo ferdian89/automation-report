@@ -76,18 +76,10 @@ Sub GetFillingGlycerine()
     Dim xlApp As Object, xlWb As Object, xlWs As Object
     Dim wsDest As Worksheet
     Dim targetDay As Date, searchValueDate As Date
-    Dim lastDataRow As Long, lastRow As Long
-    Dim i As Long, maxCol As Long
-    Dim inputCol As Long, prodCol As Long
-    Dim foundProdCol As Boolean, foundInputCol As Boolean
-    Dim inputProcessedTotal As Double
-    Dim dictProducts As Object
-    Dim prod As Variant, joinedProducts As String
     Dim sheetName As String
     Dim plantLabel As String
     Dim matchingRows As Collection
     Dim r As Variant
-    Dim finishProduct As Double
     Dim row As Long
     
     plantLabel = "Filling Glycerin Plant"
@@ -96,7 +88,6 @@ Sub GetFillingGlycerine()
     targetDay = Date - 1
     searchValueDate = targetDay
     sheetName = Format(searchValueDate, "dd")
-    Set dictProducts = CreateObject("Scripting.Dictionary")
     
     ' ==== ambil file lampiran ====
     tempFile = GetAttachment_FillingGly(searchValueDate)
@@ -120,35 +111,73 @@ Sub GetFillingGlycerine()
     On Error GoTo ErrHandler
     
     row = 1
-' ==== loop sheet sumber ====
+    
+ ' ==== loop setiap sheet sumber ====
 For Each xlWs In xlWb.Sheets
     If InStr(1, LCase(xlWs.Name), "daily report", vbTextCompare) > 0 Then
         Debug.Print "Sheet ditemukan: " & xlWs.Name
         
-        lastDataRow = xlWs.Cells(xlWs.Rows.Count, 1).End(xlUp).row
-        
-        ' === cari baris sesuai tanggal (fungsi handle merge) ===
+        ' cari baris sesuai tanggal
         Set matchingRows = GetMatchingRowsByDate(xlWs, targetDay)
-        Debug.Print "Tanggal dicari: " & targetDay & _
-                    " | Jumlah baris cocok: " & matchingRows.Count
+        Debug.Print "Tanggal dicari: " & targetDay & " | Jumlah baris cocok: " & matchingRows.Count
         
         ' === ambil setiap baris hasil ===
         For Each r In matchingRows
-            volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
+            Dim rawK As Variant, rawN As Variant
+            Dim valK As Double, valN As Double, totalVal As Double
             
-            ' Debug trace
-            Debug.Print "Row source: " & r & _
-                        " | Plant: " & plantLabel & _
-                        " | VolumeProduct(raw): " & volumeProduct & _
-                        " | Rounded: " & Round(finishProduct / 1000, 0) & " T"
+            ' baca nilai mentah
+            rawK = xlWs.Cells(r, 11).Value   ' Kolom K = 11
+            rawN = xlWs.Cells(r, 14).Value   ' Kolom N = 14
             
-            If finishProduct > 0 Then
-                wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(volumeProduct / 1000, 0) & " MT"
-                row = row + 1
+' validasi nilai K
+If IsError(rawK) Or IsEmpty(rawK) Then
+    valK = 0
+ElseIf IsNumeric(rawK) Then
+    valK = CDbl(rawK)
+ElseIf VarType(rawK) = vbString Then
+    If IsNumeric(Trim(rawK)) Then
+        valK = CDbl(Trim(rawK))
+    Else
+        valK = 0
+    End If
+Else
+    valK = 0
+End If
+
+' validasi nilai N
+If IsError(rawN) Or IsEmpty(rawN) Then
+    valN = 0
+ElseIf IsNumeric(rawN) Then
+    valN = CDbl(rawN)
+ElseIf VarType(rawN) = vbString Then
+    If IsNumeric(Trim(rawN)) Then
+        valN = CDbl(Trim(rawN))
+    Else
+        valN = 0
+    End If
+Else
+    valN = 0
+End If
+
+            
+            ' skip kalau dua-duanya kosong/0
+            If (valK = 0 And valN = 0) Then
+                Debug.Print "Row source: " & r & " dilewati (kosong)"
+            Else
+                totalVal = valK * valN
+                
+                Debug.Print "Row source: " & r & _
+                            " | Kolom K: " & valK & _
+                            " | Kolom N: " & valN & _
+                            " | Total (KxN): " & totalVal
+                
+                If totalVal > 0 Then
+                    wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(totalVal / 1000, 0) & " MT"
+                    row = row + 1
+                End If
             End If
         Next r
-    Else
-        Debug.Print "Lewati sheet: " & xlWs.Name
     End If
 Next xlWs
 
@@ -166,6 +195,8 @@ ErrHandler:
     If Not xlWb Is Nothing Then xlWb.Close False
     If Not xlApp Is Nothing Then xlApp.Quit
 End Sub
+
+
 Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collection
         Dim i As Long, lastRow As Long
         Dim valDate As Variant, mergeVal As Variant
@@ -198,143 +229,5 @@ Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collectio
         Set GetMatchingRowsByDate = matches
     End Function
     
-Function GetCellVal(ws As Worksheet, rowNum As Long, header1 As String, header2 As String, _
-                    Optional searchRowStart As Long = 1, Optional searchRowEnd As Long = 20) As Double
-    Dim colTarget As Long
-    Dim val As Variant
-    Dim f As String
-    
-    colTarget = FindHeaderColumn(ws, header1, header2, searchRowStart, searchRowEnd)
-    
-    If colTarget > 0 Then
-        ' Ambil formula
-        f = ws.Cells(rowNum, colTarget).Formula
-        
-        ' Debug info
-        Debug.Print "=== GetCellVal Debug ==="
-        Debug.Print "Worksheet   : " & ws.Name
-        Debug.Print "Cari header : " & header1 & " + " & header2
-        Debug.Print "Row target  : " & rowNum
-        Debug.Print "Col target  : " & colTarget
-        Debug.Print "Cell address: " & ws.Cells(rowNum, colTarget).Address
-        Debug.Print "Formula     : " & f
-        
-        ' Kalau ada formula, evaluate ulang
-        If Len(f) > 1 And Left$(f, 1) = "=" Then
-            val = ws.Evaluate(Mid$(f, 2))
-            Debug.Print "Evaluate val: " & val
-        Else
-            val = ws.Cells(rowNum, colTarget).Value2
-            Debug.Print "Raw val     : " & val
-        End If
-        
-        ' Convert ke double
-        If IsNumeric(val) Then
-            GetCellVal = CDbl(val)
-            Debug.Print "Value (num) : " & GetCellVal
-        Else
-            GetCellVal = 0
-            Debug.Print "Value bukan angka, return 0"
-        End If
-        Debug.Print "========================"
-    Else
-        GetCellVal = 0
-        Debug.Print "=== GetCellVal Debug ==="
-        Debug.Print "Worksheet   : " & ws.Name
-        Debug.Print "Cari header : " & header1 & " + " & header2
-        Debug.Print "Row target  : " & rowNum
-        Debug.Print "Header tidak ditemukan, return 0"
-        Debug.Print "========================"
-    End If
-End Function
 
 
-
-
-
-
-
-
-
-    
-Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
-        Dim lastCol As Long, col As Long, h1 As String, h2 As String
-        lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
-        For col = 2 To lastCol
-            h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
-            h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
-            If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
-                GetTextVal = CStr(ws.Cells(row, col).Value)
-                Exit Function
-            End If
-        Next col
-        GetTextVal = ""
-    End Function
-
-Function FindHeaderColumn(ws As Worksheet, header1 As String, header2 As String, _
-                          Optional searchRowStart As Long = 1, Optional searchRowEnd As Long = 30) As Long
-    Dim r As Long, c As Long, lastCol As Long
-    Dim h1 As String, h2 As String
-    Dim rng As Range
-    
-    FindHeaderColumn = 0
-    lastCol = ws.Cells(searchRowStart, ws.Columns.Count).End(xlToLeft).Column
-    
-    For r = searchRowStart To searchRowEnd - 1
-        For c = 1 To lastCol
-            ' --- ambil header atas (parent) ---
-            If ws.Cells(r, c).MergeCells Then
-                h1 = Trim(ws.Cells(r, c).MergeArea.Cells(1, 1).Value)
-            Else
-                h1 = Trim(ws.Cells(r, c).Value)
-            End If
-            
-            ' --- ambil header bawah (child/sub-header) ---
-            If ws.Cells(r + 1, c).MergeCells Then
-                h2 = Trim(ws.Cells(r + 1, c).MergeArea.Cells(1, 1).Value)
-            Else
-                h2 = Trim(ws.Cells(r + 1, c).Value)
-            End If
-            
-            ' Debug setiap header ketemu
-            Debug.Print "Scan r=" & r & " c=" & c & _
-                        " | H1='" & h1 & "' | H2='" & h2 & "'"
-            
-            ' --- jika cocok ---
-            If LCase(h1) = LCase(header1) And LCase(h2) = LCase(header2) Then
-                FindHeaderColumn = c
-                Debug.Print ">>> Header match: '" & header1 & " + " & header2 & "' di Kolom " & c
-                Exit Function
-            End If
-        Next c
-    Next r
-    
-    If FindHeaderColumn = 0 Then
-        Debug.Print "Header tidak ditemukan: " & header1 & " + " & header2
-    End If
-End Function
-'Sub TestHeaderSearch()
-'    Dim col As Long
-'    col = FindHeaderColumn(Sheet1, "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL")
-'    MsgBox "Kolom ditemukan: " & col
-'End Sub
-
-
-Function GetDisplayedNumber(ws As Worksheet, rowNum As Long, colNum As Long) As Double
-    Dim disp As String
-    disp = Trim(ws.Cells(rowNum, colNum).Text) ' ambil angka yang tampil di layar
-    
-    Debug.Print "=== GetDisplayedNumber Debug ==="
-    Debug.Print "Worksheet   : " & ws.Name
-    Debug.Print "Cell addr   : " & ws.Cells(rowNum, colNum).Address
-    Debug.Print "Displayed   : " & disp
-    
-    If IsNumeric(disp) Then
-        GetDisplayedNumber = CDbl(disp)
-        Debug.Print "Converted   : " & GetDisplayedNumber
-    Else
-        GetDisplayedNumber = 0
-        Debug.Print "Bukan angka, return 0"
-    End If
-    Debug.Print "========================"
-End Function
