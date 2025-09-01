@@ -1,0 +1,469 @@
+Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim senderName As Variant
+    Dim targetDate As Date
+    Dim fullPath As String
+    Dim wbCheck As Workbook
+    Dim linkArr As Variant, lnk As Variant
+    Dim savedFiles As String
+    
+    savedFiles = ""
+    targetDate = Date - 4  ' email HARI INI
+    
+    ' --- Pastikan folder tujuan ada
+    If Dir(saveFolder, vbDirectory) = "" Then
+        MkDir saveFolder
+    End If
+    
+    Debug.Print "=== MULAI Cari Attachment ==="
+    Debug.Print "Target keyword : " & fileName
+    Debug.Print "Target date    : " & Format(targetDate, "yyyy-mm-dd")
+    Debug.Print "Save folder    : " & saveFolder
+    
+    ' Buka Outlook
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+    If olApp Is Nothing Then
+        Debug.Print "Gagal buka Outlook!"
+        Exit Function
+    End If
+    
+    ' Ambil folder Inbox
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
+    
+    Debug.Print "Total items inbox: " & olItems.Count
+    
+    ' Loop semua email
+    For Each olMail In olItems
+        If olMail.Class = 43 Then ' 43 = MailItem
+            ' --- cek tanggal email (hari yang sama)
+            If DateValue(olMail.ReceivedTime) = targetDate Then
+                Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+                
+                ' Cek semua kemungkinan nama pengirim
+                For Each senderName In senderNames
+                    If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                        Debug.Print "  -> Pengirim cocok: " & senderName
+                        
+                        ' Loop semua lampiran
+                        For Each olAtmt In olMail.Attachments
+                            Debug.Print "     Lampiran: " & olAtmt.fileName
+                            
+                            ' Partial match nama file
+                            If InStr(1, olAtmt.fileName, fileName, vbTextCompare) > 0 Then
+                                fullPath = saveFolder & olAtmt.fileName
+                                
+                                ' Hapus file lama kalau ada
+                                If Dir(fullPath) <> "" Then Kill fullPath
+                                
+                                ' Simpan attachment
+                                olAtmt.SaveAsFile fullPath
+                                Debug.Print "  -> File disimpan di: " & fullPath
+                                
+                                ' Break link jika Excel
+                                If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
+                                    On Error Resume Next
+                                    Set wbCheck = Workbooks.Open(fullPath)
+                                    linkArr = wbCheck.LinkSources(xlLinkTypeExcelLinks)
+                                    If Not IsEmpty(linkArr) Then
+                                        For Each lnk In linkArr
+                                            wbCheck.BreakLink Name:=lnk, Type:=xlLinkTypeExcelLinks
+                                        Next lnk
+                                    End If
+                                    wbCheck.Close SaveChanges:=True
+                                    On Error GoTo 0
+                                End If
+                                
+                                ' Simpan path ke hasil
+                                If savedFiles = "" Then
+                                    savedFiles = fullPath
+                                Else
+                                    savedFiles = savedFiles & ";" & fullPath
+                                End If
+                            End If
+                        Next olAtmt
+                    End If
+                Next senderName
+            End If
+        End If
+    Next olMail
+    
+    GetAttachmentFromEmail = savedFiles
+    
+    If savedFiles = "" Then
+        Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
+    Else
+        Debug.Print ">>> Selesai, total file disimpan: " & UBound(Split(savedFiles, ";")) + 1
+    End If
+    
+    Debug.Print "=== SELESAI ==="
+End Function
+
+
+    
+    
+    
+    
+    ' === Sub utama membuat laporan gabungan multi-date ===
+    Sub GenerateCombinedFullReport()
+        Dim targetDate As Date, sheetName As String
+        Dim wsDest As Worksheet, currentRow As Long
+        Dim refFilePath As String, ptrFilePath As String
+        Dim scdFilePath As String, cbsFilePath As String
+        Dim bioFilePath As String
+        Dim marshoFilePath As String
+        Dim savePath As String, monthFile As String
+        Dim wbDest As Workbook
+        Dim wsSummary As Worksheet
+        Dim sumRow As Long
+        
+        Application.AskToUpdateLinks = False
+        Application.ScreenUpdating = False
+        Application.DisplayAlerts = False
+        
+        ' === Tentukan lokasi penyimpanan ===
+        savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Grade\"
+        
+        targetDate = Date - 5
+        sheetName = Format(targetDate, "dd")
+        
+        ' === Tentukan file bulanan ===
+        monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
+        
+        ' === Buka file bulanan, atau buat baru ===
+        On Error Resume Next
+        Set wbDest = Workbooks.Open(monthFile)
+        On Error GoTo 0
+        
+        If wbDest Is Nothing Then
+            Set wbDest = Workbooks.Add
+            Application.DisplayAlerts = False
+            wbDest.Sheets(1).Name = "Dummy"
+            Application.DisplayAlerts = True
+            wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
+        End If
+        
+        ' === Siapkan sheet tanggal ===
+        On Error Resume Next
+        Set wsDest = wbDest.Sheets(sheetName)
+        If Not wsDest Is Nothing Then
+            Application.DisplayAlerts = False
+            wsDest.Delete
+            Application.DisplayAlerts = True
+        End If
+        On Error GoTo 0
+        
+        Set wsDest = wbDest.Sheets.Add(After:=wbDest.Sheets(wbDest.Sheets.Count))
+        wsDest.Name = sheetName
+        wsDest.Tab.Color = RGB(255, 0, 0)
+        currentRow = 1
+        
+        ' === Siapkan Summary sheet ===
+        On Error Resume Next
+        Set wsSummary = wbDest.Sheets("Summary")
+        On Error GoTo 0
+        If wsSummary Is Nothing Then
+            Set wsSummary = wbDest.Sheets.Add(Before:=wbDest.Sheets(1))
+            wsSummary.Name = "Summary"
+        End If
+        sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
+        
+        ' === Ambil file dari email ===
+ ' === Dapatkan nama bulan & tahun ===
+Dim bulanIndo As String, tahunStr As String
+bulanIndo = NamaBulanIndonesia(targetDate)
+tahunStr = Format(targetDate, "yyyy")
+
+' === Refinery ===
+refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan", "Dhina Mutia", "Mohammad Arif Budiarto"), _
+                "Refinery and Fractination Production Report " & bulanIndo & " " & tahunStr & "  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+
+' === Pre-Treatment ===
+ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
+                "Pre-Treatment Production Report " & bulanIndo & " " & tahunStr & "  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+
+
+
+        
+        ' === Refinery ===
+        If refFilePath <> "" Then
+            Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+            Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+            Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+    
+        ' === PTR ===
+        If ptrFilePath <> "" Then
+            Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
+        Else
+            wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
+            currentRow = currentRow + 2
+        End If
+
+    
+
+        
+        
+        ' === Simpan hasil ===
+        wbDest.Save
+        
+        MsgBox "Laporan gabungan selesai dibuat.", vbInformation
+    End Sub
+
+    
+' ------------------ REFINERY & PTR ------------------
+' ------------------ REFINERY & PTR ------------------
+Sub GenerateRefReportPart(filePath As String, sheetSource As String, plantLabel As String, wsTarget As Worksheet, row As Long, targetDay As Integer)
+    Dim wb As Workbook, ws As Worksheet
+    Dim lastRow As Long, i As Long
+    Dim matchingRows As Collection
+    Dim mergeVal As Variant
+    Dim rowCPO As Double
+    Dim downtimeText As String
+    Dim r As Variant
+    Dim arrQ As Variant   ' Array variant untuk setiap quality
+    
+    Debug.Print ">>> [Start] GenerateRefReportPart"
+    Debug.Print "File=" & filePath & " | Sheet=" & sheetSource & " | Plant=" & plantLabel & " | TargetDay=" & targetDay
+    
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
+    Set ws = wb.Sheets(sheetSource)
+    
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).row
+    Debug.Print "LastRow=" & lastRow
+    
+    Set matchingRows = New Collection
+    Dim isEndOfMonth As Boolean
+    isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+    Debug.Print "isEndOfMonth=" & isEndOfMonth
+    
+    ' Cari baris sesuai tanggal
+    For i = 10 To lastRow
+        If ws.Cells(i, 1).MergeCells Then
+            mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
+        Else
+            mergeVal = ws.Cells(i, 1).Value
+        End If
+    
+        If mergeVal = targetDay Then
+            If isEndOfMonth Then
+                If i >= 150 Then matchingRows.Add i
+            Else
+                matchingRows.Add i
+            End If
+        End If
+    Next i
+    
+    Debug.Print "MatchingRows found=" & matchingRows.Count
+    
+    If matchingRows.Count = 0 Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Tanggal tidak ditemukan"
+        row = row + 2
+        wb.Close False
+        Exit Sub
+    End If
+    
+    ' Dictionary untuk simpan data per Quality
+    Dim qualityDict As Object
+    Set qualityDict = CreateObject("Scripting.Dictionary")
+    
+    ' Loop data harian
+    For Each r In matchingRows
+        Dim q As String
+        q = Trim(ws.Cells(r, 3).Value) ' Kolom C = Quality
+        If q = "" Then q = "UNKNOWN"
+        
+        ' Inisialisasi array agregasi jika belum ada
+        If Not qualityDict.Exists(q) Then
+            qualityDict.Add q, Array(0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#, 0#)
+        End If
+        
+        arrQ = qualityDict(q) ' ambil array ke variant lokal
+        
+        rowCPO = SafeGetVal(ws, CLng(r), "input", "kg", 8, 9)
+        
+        arrQ(0) = arrQ(0) + rowCPO
+        arrQ(1) = arrQ(1) + SafeGetVal(ws, CLng(r), "rbd output", "kg", 8, 9)
+        arrQ(2) = arrQ(2) + SafeGetVal(ws, CLng(r), "pfad output", "kg", 8, 9)
+        
+        arrQ(3) = arrQ(3) + rowCPO * SafeGetVal(ws, CLng(r), "steam", "kg/mt", 8, 9)
+        arrQ(4) = arrQ(4) + rowCPO * SafeGetVal(ws, CLng(r), "electricity", "kwh/mt", 8, 9)
+        arrQ(5) = arrQ(5) + rowCPO * SafeGetVal(ws, CLng(r), "bleaching earth", "%", 8, 9)
+        arrQ(6) = arrQ(6) + rowCPO * SafeGetVal(ws, CLng(r), "phosphoric acid", "%", 8, 9)
+        arrQ(7) = arrQ(7) + rowCPO * SafeGetVal(ws, CLng(r), "input", "ffa", 8, 9)
+        arrQ(8) = arrQ(8) + rowCPO * SafeGetVal(ws, CLng(r), "rbd output", "%ffa", 8, 9)
+        arrQ(9) = arrQ(9) + rowCPO * SafeGetVal(ws, CLng(r), "rbd output", "col", 8, 9)
+        
+        qualityDict(q) = arrQ  ' simpan balik ke dictionary (harus ada!)
+        
+        Debug.Print "Row=" & r & " | Q=" & q & " | CPO=" & rowCPO
+        
+        ' Kumpulkan downtime text
+        Dim currentDT As String
+        currentDT = GetTextVal(ws, CLng(r), "downtime", "keterangan", 8, 9)
+        If Trim(currentDT) <> "" Then
+            downtimeText = downtimeText & vbCrLf & currentDT
+        End If
+    Next r
+    
+    wb.Close False
+    Debug.Print ">>> File closed"
+    
+    ' === Tulis hasil ke wsTarget per Quality ===
+    Dim key As Variant
+    For Each key In qualityDict.Keys
+        arrQ = qualityDict(key)
+        
+        Debug.Print "Output | Plant=" & plantLabel & " | Quality=" & key & _
+                    " | TotalCPO=" & arrQ(0) & " | RBD=" & arrQ(1) & " | PFAD=" & arrQ(2)
+        
+        wsTarget.Cells(row, 1).Value = plantLabel
+        wsTarget.Cells(row, 2).Value = key
+        wsTarget.Cells(row, 3).Value = arrQ(0) ' CPO
+        wsTarget.Cells(row, 4).Value = arrQ(1) ' RBD
+        wsTarget.Cells(row, 5).Value = arrQ(2) ' PFAD
+        wsTarget.Cells(row, 6).Value = arrQ(3) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' Steam per MT
+        wsTarget.Cells(row, 7).Value = arrQ(4) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' Elec per MT
+        wsTarget.Cells(row, 8).Value = arrQ(5) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' BE %
+        wsTarget.Cells(row, 9).Value = arrQ(6) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' PA %
+        wsTarget.Cells(row, 10).Value = arrQ(7) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' Input FFA
+        wsTarget.Cells(row, 11).Value = arrQ(8) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' RBD FFA
+        wsTarget.Cells(row, 12).Value = arrQ(9) / IIf(arrQ(0) = 0, 1, arrQ(0)) ' RBD Col
+        row = row + 1
+    Next key
+    
+    ' Tambah catatan downtime
+    If Trim(downtimeText) <> "" Then
+        wsTarget.Cells(row, 1).Value = plantLabel & " - Downtime:"
+        wsTarget.Cells(row, 2).Value = downtimeText
+        row = row + 2
+    End If
+    
+    Debug.Print ">>> [Finish] GenerateRefReportPart"
+End Sub
+
+
+
+
+    
+  
+    
+    
+    
+    Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collection
+        Dim i As Long, lastRow As Long
+        Dim valDate As Variant, mergeVal As Variant
+        Dim isEndOfMonth As Boolean, isStartOfMonth As Boolean
+        Dim matches As New Collection
+    
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
+        isEndOfMonth = (Day(Date) = Day(DateSerial(Year(Date), Month(Date) + 1, 0)))
+        isStartOfMonth = (Day(Date) = 1)
+    
+        For i = 10 To lastRow
+            If ws.Cells(i, 1).MergeCells Then
+                mergeVal = ws.Cells(i, 1).MergeArea.Cells(1, 1).Value
+            Else
+                mergeVal = ws.Cells(i, 1).Value
+            End If
+    
+            If IsDate(mergeVal) Then
+                valDate = DateValue(mergeVal)
+                If valDate = targetDate Then
+                    If isEndOfMonth And i >= 150 Then
+                        matches.Add i
+                    ElseIf Not isEndOfMonth Then
+                        matches.Add i
+                    End If
+                End If
+            End If
+        Next i
+    
+        Set GetMatchingRowsByDate = matches
+    End Function
+    
+    
+    
+    ' ------------------ UTIL ------------------
+    Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
+        Dim lastCol As Long, col As Long, h1 As String, h2 As String
+        lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+        For col = 2 To lastCol
+            h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+            h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+            If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+                GetCellVal = ws.Cells(row, col).Value
+                Exit Function
+            End If
+        Next col
+        GetCellVal = 0
+    End Function
+    
+    Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
+        Dim lastCol As Long, col As Long, h1 As String, h2 As String
+        lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
+        For col = 2 To lastCol
+            h1 = LCase(Trim(ws.Cells(h1Row, col).MergeArea.Cells(1, 1).Value))
+            h2 = LCase(Trim(ws.Cells(h2Row, col).Value))
+            If h1 = LCase(h1Text) And h2 = LCase(h2Text) Then
+                GetTextVal = CStr(ws.Cells(row, col).Value)
+                Exit Function
+            End If
+        Next col
+        GetTextVal = ""
+    End Function
+    
+    
+   
+     
+   Function NamaBulanIndonesia(tanggal As Date) As String
+    Dim bulanArray As Variant
+    bulanArray = Array("", "Januari", "Februari", "Maret", "April", "Mei", _
+                       "Juni", "Juli", "Agustus", "September", "Oktober", _
+                       "November", "Desember")
+    NamaBulanIndonesia = bulanArray(Month(tanggal))
+End Function
+ 
+    
+    
+    
+    ' ==== Fungsi pembagian aman ====
+Function SafeDiv(numerator As Double, denominator As Double) As Double
+        If denominator = 0 Or IsError(denominator) Or IsError(numerator) _
+           Or IsEmpty(denominator) Or IsEmpty(numerator) _
+           Or Not IsNumeric(denominator) Or Not IsNumeric(numerator) Then
+            SafeDiv = 0
+        Else
+            SafeDiv = numerator / denominator
+        End If
+    End Function
+    
+    ' ==== Fungsi ambil angka aman ====
+    Private Function SafeGetVal(ws As Worksheet, rowNum As Long, header1 As String, header2 As String, _
+                                headerRow1 As Long, headerRow2 As Long) As Double
+        Dim val As Variant
+        On Error Resume Next
+        val = GetCellVal(ws, rowNum, header1, header2, headerRow1, headerRow2)
+        On Error GoTo 0
+        
+        If IsError(val) Or IsEmpty(val) Or Not IsNumeric(val) Then
+            SafeGetVal = 0
+        Else
+            SafeGetVal = CDbl(val)
+        End If
+    End Function
+    
+    
+    
+    
+    
+
