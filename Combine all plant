@@ -1,92 +1,94 @@
-    ' === Fungsi ambil file dari email Outlook (hari ini saja + debug) ===
-    Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
-        Dim olApp As Object, olNs As Object, olFolder As Object
-        Dim olItems As Object, olMail As Object, olAtmt As Object
-        Dim senderName As Variant
-        Dim targetDate As Date
-        Dim fullPath As String
-        Dim wbCheck As Workbook
-        
-        GetAttachmentFromEmail = ""
-        targetDate = Date    ' hanya email hari ini
-        fullPath = saveFolder & fileName
-        
-        ' --- Folder tujuan
-        saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
-        fullPath = saveFolder & fileName
-        
-        Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
-        Debug.Print "Target file   : " & fileName
-        Debug.Print "Target date   : " & Format(targetDate, "yyyy-mm-dd")
-        Debug.Print "Save folder   : " & saveFolder
-        
-        ' Buka Outlook
-        On Error Resume Next
-        Set olApp = GetObject(, "Outlook.Application")
-        If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
-        On Error GoTo 0
-        If olApp Is Nothing Then
-            Debug.Print "Gagal buka Outlook!"
-            Exit Function
-        End If
-        
-        ' Ambil folder Inbox
-        Set olNs = olApp.GetNamespace("MAPI")
-        Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
-        Set olItems = olFolder.Items
-        olItems.Sort "[ReceivedTime]", True
-        
-        Debug.Print "Total items inbox: " & olItems.Count
-        
-        ' Loop semua email
-        For Each olMail In olItems
-            If olMail.Class = 43 Then ' 43 = MailItem
-                If Int(olMail.ReceivedTime) = targetDate Then
-                    Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
-                    
-                    ' Cek semua kemungkinan nama pengirim
-                    For Each senderName In senderNames
-                        If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
-                            Debug.Print "  -> Pengirim cocok: " & senderName
+Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim senderName As Variant
+    Dim targetDate As Date
+    Dim fullPath As String
+    Dim wbCheck As Workbook
+    
+    GetAttachmentFromEmail = ""
+    targetDate = Date  ' hanya email hari ini
+    fullPath = saveFolder & fileName
+    
+    ' --- Folder tujuan
+    saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
+    fullPath = saveFolder & fileName
+    
+    Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
+    Debug.Print "Target file   : " & fileName
+    Debug.Print "Target date   : " & Format(targetDate, "yyyy-mm-dd")
+    Debug.Print "Save folder   : " & saveFolder
+    
+    ' Buka Outlook
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+    If olApp Is Nothing Then
+        Debug.Print "Gagal buka Outlook!"
+        Exit Function
+    End If
+    
+    ' Ambil folder Inbox
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
+    
+    Debug.Print "Total items inbox: " & olItems.Count
+    
+    ' Loop semua email
+    For Each olMail In olItems
+        If olMail.Class = 43 Then ' 43 = MailItem
+            If Int(olMail.ReceivedTime) = targetDate Then
+                Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+                
+                ' Cek semua kemungkinan nama pengirim
+                For Each senderName In senderNames
+                    If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                        Debug.Print "  -> Pengirim cocok: " & senderName
+                        
+                        ' Loop semua lampiran
+                        For Each olAtmt In olMail.Attachments
+                            Debug.Print "     Lampiran: " & olAtmt.fileName
                             
-                            ' Loop semua lampiran
-                            For Each olAtmt In olMail.Attachments
-                                Debug.Print "     Lampiran: " & olAtmt.fileName
-                                If olAtmt.fileName = fileName Then
-                                    ' --- Hapus file lama jika ada
-                                    If Dir(fullPath) <> "" Then
-                                        Kill fullPath
-                                    End If
-                                    
-                                    ' --- Simpan attachment
-                                    olAtmt.SaveAsFile fullPath
-                                    Debug.Print "  -> File disimpan di: " & fullPath
-                                    
-                                    ' --- Break link jika file Excel
-                                    If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
-                                        On Error Resume Next
-                                        Set wbCheck = Workbooks.Open(fullPath)
-                                        wbCheck.BreakLink Name:=fullPath, Type:=xlLinkTypeExcelLinks
-                                        wbCheck.Close SaveChanges:=True
-                                        On Error GoTo 0
-                                    End If
-                                    
-                                    GetAttachmentFromEmail = fullPath
-                                    Exit Function
+                            ' === Ganti exact match jadi partial match ===
+                            If InStr(1, olAtmt.fileName, fileName, vbTextCompare) > 0 Then
+                                ' --- Hapus file lama jika ada
+                                If Dir(fullPath) <> "" Then
+                                    Kill fullPath
                                 End If
-                            Next olAtmt
-                        End If
-                    Next senderName
-                End If
+                                
+                                ' --- Simpan attachment
+                                olAtmt.SaveAsFile fullPath
+                                Debug.Print "  -> File disimpan di: " & fullPath
+                                
+                                ' --- Break link jika file Excel
+                                If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
+                                    On Error Resume Next
+                                    Set wbCheck = Workbooks.Open(fullPath)
+                                    wbCheck.BreakLink Name:=fullPath, Type:=xlLinkTypeExcelLinks
+                                    wbCheck.Close SaveChanges:=True
+                                    On Error GoTo 0
+                                End If
+                                
+                                GetAttachmentFromEmail = fullPath
+                                Exit Function
+                            End If
+                        Next olAtmt
+                    End If
+                Next senderName
             End If
-        Next olMail
-        
-        If GetAttachmentFromEmail = "" Then
-            Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
         End If
-        
-        Debug.Print "=== SELESAI ==="
-    End Function
+    Next olMail
+    
+    If GetAttachmentFromEmail = "" Then
+        Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
+    End If
+    
+    Debug.Print "=== SELESAI ==="
+End Function
+
     
     
     
@@ -155,9 +157,8 @@
         End If
         sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
         
-        
-        
-' === Dapatkan nama bulan & tahun ===
+        ' === Ambil file dari email ===
+ ' === Dapatkan nama bulan & tahun ===
 Dim bulanIndo As String, tahunStr As String
 bulanIndo = NamaBulanIndonesia(targetDate)
 tahunStr = Format(targetDate, "yyyy")
@@ -172,19 +173,20 @@ ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nug
 
 ' === SCD (bisa dari Ferry atau Putri) ===
 scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis", "Putri Yolla Safitri"), _
-                "02.Daily Report SCD  Hydro Plant (HO) " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+                "Daily Report SCD  Hydro Plant (HO) " & bulanIndo & " " & tahunStr, Environ("TEMP") & "\")
 
 ' === CBS (bisa dari Ferry atau Putri) ===
 cbsFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis", "Putri Yolla Safitri"), _
-                "02. Report Daily CBS HO " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+                "Report Daily CBS HO " & bulanIndo & " " & tahunStr, Environ("TEMP") & "\")
+
 
 ' === Biodiesel ===
 bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
                 "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
 
+' === Marsho (dua kemungkinan nama file) ===
 Dim bulanAngka As String
 bulanAngka = Format(Month(targetDate), "00")   ' hasil: 01, 02, ..., 12
-
 ' === Marsho (dua kemungkinan nama file) ===
 marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
                 bulanAngka & ". Actual vs Planning " & bulanIndo & " Marunda (" & tahunStr & ") 1.xlsx", Environ("TEMP") & "\")
@@ -193,6 +195,14 @@ If marshoFilePath = "" Then _
                 bulanAngka & ". Actual vs Planning " & bulanIndo & " Marunda (" & tahunStr & ").xlsx", Environ("TEMP") & "\")
 
 
+        
+' === Biodiesel ===
+bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+If bioFilePath = "" Then
+    bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+End If
 
         
         ' === Refinery ===
@@ -254,16 +264,15 @@ If marshoFilePath = "" Then _
         
         MsgBox "Laporan gabungan selesai dibuat.", vbInformation
     End Sub
-Function NamaBulanIndonesia(tanggal As Date) As String
+    
+   Function NamaBulanIndonesia(tanggal As Date) As String
     Dim bulanArray As Variant
     bulanArray = Array("", "Januari", "Februari", "Maret", "April", "Mei", _
                        "Juni", "Juli", "Agustus", "September", "Oktober", _
                        "November", "Desember")
     NamaBulanIndonesia = bulanArray(Month(tanggal))
 End Function
-
-
-    
+ 
     
     
     
@@ -1801,4 +1810,5 @@ ErrorHandler:
     
     
     
+
 
