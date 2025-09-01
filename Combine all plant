@@ -8,7 +8,7 @@
         Dim wbCheck As Workbook
         
         GetAttachmentFromEmail = ""
-        targetDate = Date - 39   ' hanya email hari ini
+        targetDate = Date    ' hanya email hari ini
         fullPath = saveFolder & fileName
         
         ' --- Folder tujuan
@@ -111,7 +111,7 @@
         ' === Tentukan lokasi penyimpanan ===
         savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
         
-        targetDate = Date - 40
+        targetDate = Date - 1
         sheetName = Format(targetDate, "dd")
         
         ' === Tentukan file bulanan ===
