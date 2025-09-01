@@ -8,7 +8,7 @@
         Dim wbCheck As Workbook
         
         GetAttachmentFromEmail = ""
-        targetDate = Date   ' hanya email hari ini
+        targetDate = Date - 39   ' hanya email hari ini
         fullPath = saveFolder & fileName
         
         ' --- Folder tujuan
@@ -111,7 +111,7 @@
         ' === Tentukan lokasi penyimpanan ===
         savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
         
-        targetDate = Date - 1
+        targetDate = Date - 40
         sheetName = Format(targetDate, "dd")
         
         ' === Tentukan file bulanan ===
@@ -155,40 +155,45 @@
         End If
         sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
         
-        ' === Ambil file dari email ===
-        refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan"), _
-                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        If refFilePath = "" Then _
-            refFilePath = GetAttachmentFromEmail(Array("Dhina Mutia"), _
-                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        If refFilePath = "" Then _
-            refFilePath = GetAttachmentFromEmail(Array("Mohammad Arif Budiarto"), _
-                        "Refinery and Fractination Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
         
-        ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                        "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-        If ptrFilePath = "" Then _
-            ptrFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                        "Pre-Treatment Production Report Agustus 2025  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
         
-        scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis"), _
-                        "02.Daily Report SCD  Hydro Plant (HO) Agustus 2025.xlsx", Environ("TEMP") & "\")
-        cbsFilePath = GetAttachmentFromEmail(Array("Putri Yolla Safitri"), _
-                        "02. Report Daily CBS HO Agustus 2025.xlsx", Environ("TEMP") & "\")
-        
-        marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
-                        "08. Actual vs Planning Agustus Marunda (2025) 1.xlsx", Environ("TEMP") & "\")
-        If marshoFilePath = "" Then _
-        marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
-                        "08. Actual vs Planning Agustus Marunda (2025).xlsx", Environ("TEMP") & "\")
-        
-        ' === Biodiesel ===
-        bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                    "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
-        If bioFilePath = "" Then
-            bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                    "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter August 2025.xlsx", Environ("TEMP") & "\")
-        End If
+' === Dapatkan nama bulan & tahun ===
+Dim bulanIndo As String, tahunStr As String
+bulanIndo = NamaBulanIndonesia(targetDate)
+tahunStr = Format(targetDate, "yyyy")
+
+' === Refinery ===
+refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan", "Dhina Mutia", "Mohammad Arif Budiarto"), _
+                "Refinery and Fractination Production Report " & bulanIndo & " " & tahunStr & "  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+
+' === Pre-Treatment ===
+ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
+                "Pre-Treatment Production Report " & bulanIndo & " " & tahunStr & "  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
+
+' === SCD (bisa dari Ferry atau Putri) ===
+scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis", "Putri Yolla Safitri"), _
+                "02.Daily Report SCD  Hydro Plant (HO) " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+
+' === CBS (bisa dari Ferry atau Putri) ===
+cbsFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis", "Putri Yolla Safitri"), _
+                "02. Report Daily CBS HO " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+
+' === Biodiesel ===
+bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
+                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
+
+Dim bulanAngka As String
+bulanAngka = Format(Month(targetDate), "00")   ' hasil: 01, 02, ..., 12
+
+' === Marsho (dua kemungkinan nama file) ===
+marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
+                bulanAngka & ". Actual vs Planning " & bulanIndo & " Marunda (" & tahunStr & ") 1.xlsx", Environ("TEMP") & "\")
+If marshoFilePath = "" Then _
+    marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
+                bulanAngka & ". Actual vs Planning " & bulanIndo & " Marunda (" & tahunStr & ").xlsx", Environ("TEMP") & "\")
+
+
+
         
         ' === Refinery ===
         If refFilePath <> "" Then
@@ -249,7 +254,15 @@
         
         MsgBox "Laporan gabungan selesai dibuat.", vbInformation
     End Sub
-    
+Function NamaBulanIndonesia(tanggal As Date) As String
+    Dim bulanArray As Variant
+    bulanArray = Array("", "Januari", "Februari", "Maret", "April", "Mei", _
+                       "Juni", "Juli", "Agustus", "September", "Oktober", _
+                       "November", "Desember")
+    NamaBulanIndonesia = bulanArray(Month(tanggal))
+End Function
+
+
     
     
     
