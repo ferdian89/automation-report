@@ -1,22 +1,213 @@
-Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
+'Option Explicit
+'
+'Public SelectedDate As Date
+'Public CalendarCancelled As Boolean
+'
+'Function AskTargetDate() As Date
+'    ' Default: kosong
+'    SelectedDate = 0
+'    CalendarCancelled = False
+'
+'    ' Tampilkan UserForm
+'    frmCalendar.Show vbModal
+'
+'    If CalendarCancelled = True Then
+'        AskTargetDate = 0
+'    Else
+'        AskTargetDate = SelectedDate
+'    End If
+'End Function
+'
+'Sub BtnKemarin_Click()
+'    Call GenerateCombinedFullReport(Date - 1)
+'End Sub
+'
+'Sub BtnPilihTanggal_Click()
+'    Dim tgl As Date
+'    tgl = AskTargetDate()
+'    If tgl <> 0 Then
+'        Call GenerateCombinedFullReport(tgl)
+'    End If
+'End Sub
+
+' === Sub utama membuat laporan gabungan multi-date ===
+Sub GenerateCombinedFullReport(Optional targetDate As Date)
+  Dim sheetName As String
+    Dim wsDest As Worksheet, currentRow As Long
+    Dim refFilePath As String, ptrFilePath As String
+    Dim scdFilePath As String, cbsFilePath As String
+    Dim bioFilePath As String
+    Dim marshoFilePath As String
+    Dim savePath As String, monthFile As String
+    Dim wbDest As Workbook
+    Dim wsSummary As Worksheet
+    Dim sumRow As Long
+    
+    Application.AskToUpdateLinks = False
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+       Application.StatusBar = "? Sedang memproses report untuk tanggal: " & Format(targetDate, "dd-mmm-yyyy")
+    Application.Cursor = xlWait
+    
+    ' === Tentukan lokasi penyimpanan ===
+    savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
+    
+    If targetDate = 0 Then
+        targetDate = frmCalendar.GetDateFromCalendar()
+        If targetDate = 0 Then
+            MsgBox "Tidak ada tanggal dipilih.", vbExclamation
+            Exit Sub
+        End If
+    End If
+    sheetName = Format(targetDate, "dd")
+    
+    ' === Tentukan file bulanan ===
+    monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
+    
+    ' === Buka file bulanan, atau buat baru ===
+    On Error Resume Next
+    Set wbDest = Workbooks.Open(monthFile)
+    On Error GoTo 0
+    
+    If wbDest Is Nothing Then
+        Set wbDest = Workbooks.Add
+        Application.DisplayAlerts = False
+        wbDest.Sheets(1).Name = "Dummy"
+        Application.DisplayAlerts = True
+        wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
+    End If
+    
+    ' === Siapkan sheet tanggal ===
+    On Error Resume Next
+    Set wsDest = wbDest.Sheets(sheetName)
+    If Not wsDest Is Nothing Then
+        Application.DisplayAlerts = False
+        wsDest.Delete
+        Application.DisplayAlerts = True
+    End If
+    On Error GoTo 0
+    
+    Set wsDest = wbDest.Sheets.Add(After:=wbDest.Sheets(wbDest.Sheets.Count))
+    wsDest.Name = sheetName
+    wsDest.Tab.Color = RGB(255, 0, 0)
+    currentRow = 1
+    
+    ' === Siapkan Summary sheet ===
+    On Error Resume Next
+    Set wsSummary = wbDest.Sheets("Summary")
+    On Error GoTo 0
+    If wsSummary Is Nothing Then
+        Set wsSummary = wbDest.Sheets.Add(Before:=wbDest.Sheets(1))
+        wsSummary.Name = "Summary"
+    End If
+    sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
+    
+    ' === Ambil file dari email (pakai variasi nama file & bulan) ===
+    refFilePath = CariAttachment(Array("Nora Yohana Panjaitan", "Dhina Mutia", "Mohammad Arif Budiarto"), _
+                    Array("Refinery and Fractination Production Report {bulan} {tahun}  (HO) Flowmeter.xlsx"), targetDate)
+    
+    ptrFilePath = CariAttachment(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
+                    Array("Pre-Treatment Production Report {bulan} {tahun}  (HO) Flowmeter.xlsx"), targetDate)
+    
+    scdFilePath = CariAttachment(Array("Ferry Hermansyah Lubis"), _
+                    Array("02.Daily Report SCD  Hydro Plant (HO) {bulan} {tahun}.xlsx", _
+                          "02. Daily Report SCD Hydro Plant {bulan} {tahun}.xlsx"), targetDate)
+    
+    cbsFilePath = CariAttachment(Array("Putri Yolla Safitri"), _
+                    Array("02. Report Daily CBS HO {bulan} {tahun}.xlsx"), targetDate)
+    
+    marshoFilePath = CariAttachment(Array("Jessica Silvera"), _
+                    Array("09. Actual vs Planning {bulan} Marunda ({tahun}) 1.xlsx", _
+                          "09. Actual vs Planning {bulan} Marunda ({tahun}).xlsx"), targetDate)
+    
+    bioFilePath = CariAttachment(Array("Hani Wulandari"), _
+                    Array("Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter {bulan} {tahun}.xlsx", _
+                          "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter {bulan} {tahun} ``.xlsx"), targetDate)
+    
+    ' === Refinery ===
+    If refFilePath <> "" Then
+        Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+        Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+
+    ' === PTR ===
+    If ptrFilePath <> "" Then
+        Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    Call SumCPOProcessed(wsDest, currentRow)
+    currentRow = currentRow + 2
+
+    ' === Fractination ===
+    If refFilePath <> "" Then
+        Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
+        Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
+    End If
+
+    ' --- Plant HO ---
+    Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
+
+    ' --- Plant CBS ---
+    Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
+    
+    ' === MARSHO FILLING ===
+    If marshoFilePath <> "" Then
+        Call GenerateMarshoPlantReport(marshoFilePath, "Marunda-Marsho", wsDest, currentRow, targetDate, wsSummary, sumRow)
+        Call GenerateFillingPlantReport(marshoFilePath, "Marunda-Oil", wsDest, currentRow, targetDate, wsSummary, sumRow)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Marsho tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === Biodiesel ===
+    If bioFilePath <> "" Then
+        Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
+        Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
+        Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
+        Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+    ' === Simpan hasil ===
+    wbDest.Save
+    ' Kembalikan kursor & status
+Application.Cursor = xlDefault
+Application.StatusBar = False
+Application.ScreenUpdating = True
+Application.DisplayAlerts = True
+
+    MsgBox "Laporan gabungan selesai dibuat.", vbInformation
+End Sub
+   
+Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim senderName As Variant
-    Dim targetDate As Date
     Dim fullPath As String
     Dim wbCheck As Workbook
+    Dim searchDate As Date   ' variabel lokal untuk H+1
     
     GetAttachmentFromEmail = ""
-    targetDate = Date  ' hanya email hari ini
-    fullPath = saveFolder & fileName
     
-    ' --- Folder tujuan
+    ' Gunakan H+1, tapi jangan ubah targetDate asli
+    searchDate = targetDate + 1
+    
+    ' --- Folder tujuan ---
     saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
     fullPath = saveFolder & fileName
     
-    Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
+    Debug.Print "=== MULAI Cari Attachment (H+1) ==="
     Debug.Print "Target file   : " & fileName
-    Debug.Print "Target date   : " & Format(targetDate, "yyyy-mm-dd")
+    Debug.Print "Target date   : " & Format(searchDate, "yyyy-mm-dd")
     Debug.Print "Save folder   : " & saveFolder
     
     ' Buka Outlook
@@ -40,7 +231,7 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
     ' Loop semua email
     For Each olMail In olItems
         If olMail.Class = 43 Then ' 43 = MailItem
-            If Int(olMail.ReceivedTime) = targetDate Then
+            If Int(olMail.ReceivedTime) = searchDate Then
                 Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
                 
                 ' Cek semua kemungkinan nama pengirim
@@ -51,13 +242,9 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
                         ' Loop semua lampiran
                         For Each olAtmt In olMail.Attachments
                             Debug.Print "     Lampiran: " & olAtmt.fileName
-                            
-                            ' === Ganti exact match jadi partial match ===
-                            If InStr(1, olAtmt.fileName, fileName, vbTextCompare) > 0 Then
+                            If olAtmt.fileName = fileName Then
                                 ' --- Hapus file lama jika ada
-                                If Dir(fullPath) <> "" Then
-                                    Kill fullPath
-                                End If
+                                If Dir(fullPath) <> "" Then Kill fullPath
                                 
                                 ' --- Simpan attachment
                                 olAtmt.SaveAsFile fullPath
@@ -83,196 +270,60 @@ Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, save
     Next olMail
     
     If GetAttachmentFromEmail = "" Then
-        Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
+        Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(searchDate, "yyyy-mm-dd") & ")"
     End If
     
     Debug.Print "=== SELESAI ==="
 End Function
 
     
+' === Helper: Variasi nama bulan ===
+Function GetBulanVariasi(ByVal tgl As Date) As Variant
+    Dim bulan As Integer
+    bulan = Month(tgl)
     
-    
-    
-    ' === Sub utama membuat laporan gabungan multi-date ===
-    Sub GenerateCombinedFullReport()
-        Dim targetDate As Date, sheetName As String
-        Dim wsDest As Worksheet, currentRow As Long
-        Dim refFilePath As String, ptrFilePath As String
-        Dim scdFilePath As String, cbsFilePath As String
-        Dim bioFilePath As String
-        Dim marshoFilePath As String
-        Dim savePath As String, monthFile As String
-        Dim wbDest As Workbook
-        Dim wsSummary As Worksheet
-        Dim sumRow As Long
-        
-        Application.AskToUpdateLinks = False
-        Application.ScreenUpdating = False
-        Application.DisplayAlerts = False
-        
-        ' === Tentukan lokasi penyimpanan ===
-        savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
-        
-        targetDate = Date - 1
-        sheetName = Format(targetDate, "dd")
-        
-        ' === Tentukan file bulanan ===
-        monthFile = savePath & "Summary_" & Format(targetDate, "yyyy_mm") & ".xlsx"
-        
-        ' === Buka file bulanan, atau buat baru ===
-        On Error Resume Next
-        Set wbDest = Workbooks.Open(monthFile)
-        On Error GoTo 0
-        
-        If wbDest Is Nothing Then
-            Set wbDest = Workbooks.Add
-            Application.DisplayAlerts = False
-            wbDest.Sheets(1).Name = "Dummy"
-            Application.DisplayAlerts = True
-            wbDest.SaveAs monthFile, FileFormat:=xlOpenXMLWorkbook
-        End If
-        
-        ' === Siapkan sheet tanggal ===
-        On Error Resume Next
-        Set wsDest = wbDest.Sheets(sheetName)
-        If Not wsDest Is Nothing Then
-            Application.DisplayAlerts = False
-            wsDest.Delete
-            Application.DisplayAlerts = True
-        End If
-        On Error GoTo 0
-        
-        Set wsDest = wbDest.Sheets.Add(After:=wbDest.Sheets(wbDest.Sheets.Count))
-        wsDest.Name = sheetName
-        wsDest.Tab.Color = RGB(255, 0, 0)
-        currentRow = 1
-        
-        ' === Siapkan Summary sheet ===
-        On Error Resume Next
-        Set wsSummary = wbDest.Sheets("Summary")
-        On Error GoTo 0
-        If wsSummary Is Nothing Then
-            Set wsSummary = wbDest.Sheets.Add(Before:=wbDest.Sheets(1))
-            wsSummary.Name = "Summary"
-        End If
-        sumRow = wsSummary.Cells(wsSummary.Rows.Count, 1).End(xlUp).row + 2
-        
-        ' === Ambil file dari email ===
- ' === Dapatkan nama bulan & tahun ===
-Dim bulanIndo As String, tahunStr As String
-bulanIndo = NamaBulanIndonesia(targetDate)
-tahunStr = Format(targetDate, "yyyy")
-
-' === Refinery ===
-refFilePath = GetAttachmentFromEmail(Array("Nora Yohana Panjaitan", "Dhina Mutia", "Mohammad Arif Budiarto"), _
-                "Refinery and Fractination Production Report " & bulanIndo & " " & tahunStr & "  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-
-' === Pre-Treatment ===
-ptrFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
-                "Pre-Treatment Production Report " & bulanIndo & " " & tahunStr & "  (HO) Flowmeter.xlsx", Environ("TEMP") & "\")
-
-' === SCD (bisa dari Ferry atau Putri) ===
-scdFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis", "Putri Yolla Safitri"), _
-                "Daily Report SCD  Hydro Plant (HO) " & bulanIndo & " " & tahunStr, Environ("TEMP") & "\")
-
-' === CBS (bisa dari Ferry atau Putri) ===
-cbsFilePath = GetAttachmentFromEmail(Array("Ferry Hermansyah Lubis", "Putri Yolla Safitri"), _
-                "Report Daily CBS HO " & bulanIndo & " " & tahunStr, Environ("TEMP") & "\")
-
-
-' === Biodiesel ===
-bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
-                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
-
-' === Marsho (dua kemungkinan nama file) ===
-Dim bulanAngka As String
-bulanAngka = Format(Month(targetDate), "00")   ' hasil: 01, 02, ..., 12
-' === Marsho (dua kemungkinan nama file) ===
-marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
-                bulanAngka & ". Actual vs Planning " & bulanIndo & " Marunda (" & tahunStr & ") 1.xlsx", Environ("TEMP") & "\")
-If marshoFilePath = "" Then _
-    marshoFilePath = GetAttachmentFromEmail(Array("Jessica Silvera"), _
-                bulanAngka & ". Actual vs Planning " & bulanIndo & " Marunda (" & tahunStr & ").xlsx", Environ("TEMP") & "\")
-
-
-        
-' === Biodiesel ===
-bioFilePath = GetAttachmentFromEmail(Array("Hani Wulandari"), _
-                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
-If bioFilePath = "" Then
-    bioFilePath = GetAttachmentFromEmail(Array("Wendy Fadillah Nugraha"), _
-                "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter " & bulanIndo & " " & tahunStr & ".xlsx", Environ("TEMP") & "\")
-End If
-
-        
-        ' === Refinery ===
-        If refFilePath <> "" Then
-            Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
-            Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
-            Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-    
-        ' === PTR ===
-        If ptrFilePath <> "" Then
-            Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-        
-        Call SumCPOProcessed(wsDest, currentRow)
-        currentRow = currentRow + 2
-    
-        ' === Fractination ===
-        If refFilePath <> "" Then
-            Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
-            Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
-        End If
-    
-        ' --- Plant HO ---
-        Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
-    
-        ' --- Plant CBS ---
-        Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
-        
-            ' === MARSHO FILLING ===
-        If marshoFilePath <> "" Then
-            Call GenerateMarshoPlantReport(marshoFilePath, "Marunda-Marsho", wsDest, currentRow, targetDate, wsSummary, sumRow)
-            Call GenerateFillingPlantReport(marshoFilePath, "Marunda-Oil", wsDest, currentRow, targetDate, wsSummary, sumRow)
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File Marsho tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-        
-        ' === Biodiesel ===
-        If bioFilePath <> "" Then
-            Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
-            Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
-            Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
-            Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
-        Else
-            wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
-            currentRow = currentRow + 2
-        End If
-        
-        
-        ' === Simpan hasil ===
-        wbDest.Save
-        
-        MsgBox "Laporan gabungan selesai dibuat.", vbInformation
-    End Sub
-    
-   Function NamaBulanIndonesia(tanggal As Date) As String
-    Dim bulanArray As Variant
-    bulanArray = Array("", "Januari", "Februari", "Maret", "April", "Mei", _
-                       "Juni", "Juli", "Agustus", "September", "Oktober", _
-                       "November", "Desember")
-    NamaBulanIndonesia = bulanArray(Month(tanggal))
+    Select Case bulan
+        Case 1: GetBulanVariasi = Array("Januari", "Jan")
+        Case 2: GetBulanVariasi = Array("Februari", "Feb")
+        Case 3: GetBulanVariasi = Array("Maret", "Mar")
+        Case 4: GetBulanVariasi = Array("April", "Apr")
+        Case 5: GetBulanVariasi = Array("Mei", "May")
+        Case 6: GetBulanVariasi = Array("Juni", "Jun")
+        Case 7: GetBulanVariasi = Array("Juli", "Jul")
+        Case 8: GetBulanVariasi = Array("Agustus", "Agu", "Aug")
+        Case 9: GetBulanVariasi = Array("September", "Sep", "Sept")
+        Case 10: GetBulanVariasi = Array("Oktober", "Okt", "Oct")
+        Case 11: GetBulanVariasi = Array("November", "Nov")
+        Case 12: GetBulanVariasi = Array("Desember", "Des", "Dec")
+    End Select
 End Function
- 
+
+' === Helper: Cari attachment dengan variasi nama file & bulan ===
+Function CariAttachment(senderList As Variant, namaBaseList As Variant, targetDate As Date) As String
+    Dim bulanList As Variant, tahunStr As String
+    Dim b As Variant, base As Variant, fullName As String
+    
+    tahunStr = Year(targetDate)
+    bulanList = GetBulanVariasi(targetDate)
+    
+    For Each base In namaBaseList
+        For Each b In bulanList
+            fullName = Replace(base, "{bulan}", b)
+            fullName = Replace(fullName, "{tahun}", tahunStr)
+            
+            CariAttachment = GetAttachmentFromEmail(senderList, fullName, Environ("TEMP") & "\", targetDate)
+            If CariAttachment <> "" Then Exit Function
+        Next b
+    Next base
+    
+    CariAttachment = ""
+End Function
+
+
+
+
+    
+    
     
     
     
@@ -832,6 +883,7 @@ NextSheet:
         Dim steamVal As Variant, electVal As Variant
         Dim firstMatchRow As Long, dataRow As Long
         Dim val As Variant, tempVal As Variant
+        Dim downtimeVal As String
     
         Set wb = Workbooks.Open(filePath, ReadOnly:=True)
         Set ws = wb.Sheets(sheetSource)
@@ -1162,6 +1214,7 @@ ErrorHandler:
         Dim feedKg As Double, fameKg As Double
         Dim electVal As Variant, filterAidVal As Variant, waterVal As Variant
         Dim tempVal As Variant
+        Dim downtimeVal As String
         
         Set wb = Workbooks.Open(filePath, ReadOnly:=True)
         Set ws = wb.Sheets(sheetSource)
@@ -1439,7 +1492,7 @@ ErrorHandler:
         Set ws = wb.Sheets(sheetSource)
         
         ' --- format tanggal target ---
-        targetText = Format(targetDate, "d - mmm")
+        targetText = Format(targetDate, "dd - mmm")
         
         ' --- cari kolom tanggal di baris 5 ---
         lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
@@ -1633,7 +1686,7 @@ ErrorHandler:
         Set ws = wb.Sheets(sheetSource)
         
         ' format tanggal target
-        targetText = Format(targetDate, "d - mmm")
+        targetText = Format(targetDate, "dd - mmm")
         
         ' cari kolom tanggal di baris 5
         lastCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
@@ -1686,8 +1739,8 @@ ErrorHandler:
             
             ' cek baris IN TONASE
             If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
-                planValue = val(ws.Cells(curRow, dataCol).Value)
-                actualValue = val(ws.Cells(curRow, dataCol + 1).Value)
+                planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
+                actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
                 
                 If planValue <> 0 Then
                     perfValue = Round((actualValue / planValue) * 100, 2)
@@ -1805,10 +1858,20 @@ ErrorHandler:
         wsDest.Cells(startRow, 1).Font.Bold = True
     End Sub
     
+ Sub GenerateReport_ByCalendar()
+    Dim tgl As Date
+    tgl = UserForm1.GetDateFromCalendar
+    
+    If tgl <> 0 Then
+        Call GenerateCombinedFullReport(tgl)
+    Else
+        MsgBox "Tidak ada tanggal dipilih.", vbInformation
+    End If
+End Sub
     
     
     
     
-    
+
 
 
