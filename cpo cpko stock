@@ -1,11 +1,11 @@
-Sub GenerateCPOCPKOStockReport()
+Sub DailyStorageCPO()
     Dim cpoFilePath As String, cpkoFilePath As String
     Dim sheetName As String, todayDay As Integer, todayMonth As Integer, todayYear As Integer
     Dim sheetCodeCPO As String, sheetCodeCPKO As String
     Dim wsTarget As Worksheet
     Dim cpoFFA As Double, cpkoFFA As Double
     Dim cpoTotal As Double, cpkoTotal As Double
-    Dim monthName As String, folderCPKO As String
+    Dim monthName As String, folderCPKO As String, folderCPO As String
     
     todayDay = Day(Date - 1)
     todayMonth = Month(Date - 1)
@@ -21,14 +21,17 @@ Sub GenerateCPOCPKOStockReport()
     monthName = GetIndonesianMonth(todayMonth, todayYear)   ' contoh: "Agustus 2025"
     
     ' --- File CPO (Palmitic) ---
-    cpoFilePath = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
+    folderCPO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\"
+    cpoFilePath = folderCPO & "8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
+    If Dir(cpoFilePath) = "" Then
+        cpoFilePath = CariFileDailyStorage(folderCPO, monthName, "PALMITIC")
+    End If
     
     ' --- File CPKO (Non Palmitic) ---
     folderCPKO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\"
     cpkoFilePath = folderCPKO & "07. Daily Storage " & monthName & " (Non Palmitic Base).xlsx"
-    
     If Dir(cpkoFilePath) = "" Then
-        cpkoFilePath = CariFileCPKO(folderCPKO, monthName) ' cari fleksibel
+        cpkoFilePath = CariFileDailyStorage(folderCPKO, monthName, "NON PALMITIC")
     End If
     
     ' --- Siapkan sheet target ---
@@ -58,24 +61,23 @@ Sub GenerateCPOCPKOStockReport()
 End Sub
 
 
-
 ' ========================
-' Cari file CPKO (fleksibel)
+' Cari file Daily Storage (generic)
 ' ========================
-Private Function CariFileCPKO(folderPath As String, bulanTahun As String) As String
+Private Function CariFileDailyStorage(folderPath As String, bulanTahun As String, keyword As String) As String
     Dim f As String, targetNama As String
     targetNama = UCase("Daily Storage " & bulanTahun)   ' contoh: "DAILY STORAGE AGUSTUS 2025"
     
     f = Dir(folderPath & "*.xlsx")
     Do While f <> ""
         If InStr(1, UCase(f), targetNama) > 0 _
-           And InStr(1, UCase(f), "NON PALMITIC") > 0 Then
-           CariFileCPKO = folderPath & f
+           And InStr(1, UCase(f), UCase(keyword)) > 0 Then
+           CariFileDailyStorage = folderPath & f
            Exit Function
         End If
         f = Dir
     Loop
-    CariFileCPKO = ""
+    CariFileDailyStorage = ""
 End Function
 
 
@@ -112,12 +114,12 @@ Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String
     Set wb = GetObject(filePath)
     On Error GoTo 0
     If wb Is Nothing Then
-  Set wb = Workbooks.Open( _
-        fileName:=filePath, _
-        ReadOnly:=True, _
-        UpdateLinks:=0, _
-        IgnoreReadOnlyRecommended:=True, _
-        Notify:=False)
+        Set wb = Workbooks.Open( _
+            fileName:=filePath, _
+            ReadOnly:=True, _
+            UpdateLinks:=0, _
+            IgnoreReadOnlyRecommended:=True, _
+            Notify:=False)
     End If
     
     If wb Is Nothing Then
@@ -165,6 +167,4 @@ ErrHandler:
     ffaValue = 0: totalStock = 0
     On Error Resume Next: wb.Close SaveChanges:=False
 End Sub
-
-
 
