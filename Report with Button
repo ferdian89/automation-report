@@ -37,6 +37,7 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     Dim refFilePath As String, ptrFilePath As String
     Dim scdFilePath As String, cbsFilePath As String
     Dim bioFilePath As String
+    Dim fillGlyPath As String
     Dim marshoFilePath As String
     Dim savePath As String, monthFile As String
     Dim wbDest As Workbook
@@ -126,6 +127,9 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     bioFilePath = CariAttachment(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
                     Array("Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter {bulan} {tahun}.xlsx", _
                           "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter {bulan} {tahun} ``.xlsx"), targetDate)
+                          
+        fillGlyPath = CariAttachment(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
+                    Array("Daily Report Production Filling Glycerin Plant {bulan} {tahun}.xlsx"), targetDate)
     
     ' === Refinery ===
     If refFilePath <> "" Then
@@ -177,6 +181,14 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
         Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
     Else
         wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
+        currentRow = currentRow + 2
+    End If
+    
+        ' === Filling Glycerine ===
+    If fillGlyPath <> "" Then
+        Call GenerateFillingGlyReport(fillGlyPath, "GLY-FILL", "FILLING GLYCERIN PLANT", wsDest, currentRow, targetDate)
+    Else
+        wsDest.Cells(currentRow, 1).Value = "File Filling Glycerine tidak ditemukan"
         currentRow = currentRow + 2
     End If
     
@@ -2008,4 +2020,126 @@ ErrHandler:
 End Sub
 
 
+' ====================================================
+' Fungsi helper: Convert semua sheet di workbook ke value only
+' ====================================================
+Sub ConvertWorkbookToValues(filePath As String)
+    Dim xlApp As Object, wb As Object, ws As Object
+    
+    On Error Resume Next
+    Set xlApp = CreateObject("Excel.Application")
+    On Error GoTo 0
+    If xlApp Is Nothing Then
+        Debug.Print "ERROR: Tidak bisa buka Excel instance!"
+        Exit Sub
+    End If
+    
+    xlApp.Visible = False
+    xlApp.DisplayAlerts = False
+    
+    Set wb = xlApp.Workbooks.Open(filePath, ReadOnly:=False)
+    
+    For Each ws In wb.Worksheets
+        ws.UsedRange.Value = ws.UsedRange.Value
+    Next
+    
+    wb.Close SaveChanges:=True
+    xlApp.Quit
+    
+    Set wb = Nothing
+    Set xlApp = Nothing
+End Sub
+
+
+
+' ====================================================
+' Sub Utama: GetFillingGlycerine (versi fix merge cell + value only + single output)
+' ====================================================
+Sub GenerateFillingGlyReport(srcFile As String, shortCode As String, title As String, _
+                             wsDest As Worksheet, ByRef currentRow As Long, targetDate As Date)
+    Dim xlApp As Object, xlWb As Object, xlWs As Object
+    Dim matchingRows As Collection, r As Variant
+    Dim volumeProduct As Double
+    
+    On Error Resume Next
+    Set xlApp = CreateObject("Excel.Application")
+    xlApp.Visible = False
+    Set xlWb = xlApp.Workbooks.Open(srcFile, ReadOnly:=True)
+    On Error GoTo 0
+    If xlWb Is Nothing Then
+        wsDest.Cells(currentRow, 1).Value = "ERROR: Tidak bisa buka file Filling Glycerine"
+        currentRow = currentRow + 2
+        Exit Sub
+    End If
+    
+    ' Header
+    wsDest.Cells(currentRow, 1).Value = UCase(title)
+    currentRow = currentRow + 1
+    
+For Each xlWs In xlWb.Sheets
+    If InStr(1, LCase(xlWs.Name), "daily report", vbTextCompare) > 0 Then
+        Set matchingRows = GetMatchingRowsByDate(xlWs, targetDate)
+        
+        If matchingRows.Count > 0 Then
+            ' Ambil hanya baris pertama (row paling atas)
+            r = matchingRows.Item(1)
+            volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
+            
+            If volumeProduct > 0 Then
+                wsDest.Cells(currentRow, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(volumeProduct / 1000, 0) & " MT"
+            Else
+                wsDest.Cells(currentRow, 1).Value = "Stop Plant (fit to PPIC Planning)"
+            End If
+            
+            currentRow = currentRow + 1
+        End If
+    End If
+Next xlWs
+
+    
+    xlWb.Close False
+    xlApp.Quit
+    Set xlApp = Nothing
+    currentRow = currentRow + 1
+End Sub
+
+
+
+Function FindHeaderColumn(ws As Worksheet, header1 As String, header2 As String) As Long
+    Dim c As Long, lastCol As Long
+    Dim h1 As String, h2 As String
+    
+    FindHeaderColumn = 0
+    lastCol = ws.Cells(10, ws.Columns.Count).End(xlToLeft).Column
+    
+    For c = 1 To lastCol
+        ' --- ambil header utama (row 7-9 merge) ---
+        If ws.Cells(7, c).MergeCells Then
+            h1 = Trim(ws.Cells(7, c).MergeArea.Cells(1, 1).Value)
+        Else
+            h1 = Trim(ws.Cells(7, c).Value)
+        End If
+        
+        ' --- ambil sub-header (row 10) ---
+        If ws.Cells(10, c).MergeCells Then
+            h2 = Trim(ws.Cells(10, c).MergeArea.Cells(1, 1).Value)
+        Else
+            h2 = Trim(ws.Cells(10, c).Value)
+        End If
+        
+        Debug.Print "Scan col=" & c & _
+                    " | H1='" & h1 & "' | H2='" & h2 & "'"
+        
+        ' --- jika cocok ---
+        If LCase(h1) = LCase(header1) And LCase(h2) = LCase(header2) Then
+            FindHeaderColumn = c
+            Debug.Print ">>> Header match: '" & header1 & " + " & header2 & "' di Kolom " & c
+            Exit Function
+        End If
+    Next c
+    
+    If FindHeaderColumn = 0 Then
+        Debug.Print "Header tidak ditemukan: " & header1 & " + " & header2
+    End If
+End Function
 
