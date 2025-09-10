@@ -1,155 +1,34 @@
- ' === Versi Kemarin ===
-Sub GenerateReport_Kemarin()
+Option Explicit
+
+Public SelectedDate As Date
+Public CalendarCancelled As Boolean
+
+Function AskTargetDate() As Date
+    ' Default: kosong
+    SelectedDate = 0
+    CalendarCancelled = False
+
+    ' Tampilkan UserForm
+    frmCalendar.Show vbModal
+
+    If CalendarCancelled = True Then
+        AskTargetDate = 0
+    Else
+        AskTargetDate = SelectedDate
+    End If
+End Function
+
+Sub BtnKemarin_Click()
     Call GenerateCombinedFullReport(Date - 1)
 End Sub
 
-' === Versi Input Manual ===
-Sub GenerateReport_InputTanggal()
-    Dim tgl As Variant
-    tgl = InputBox("Masukkan tanggal (format: dd-mm-yyyy):", "Pilih Tanggal")
-    If IsDate(tgl) Then
-        Call GenerateCombinedFullReport(CDate(tgl))
-    Else
-        MsgBox "Tanggal tidak valid!", vbExclamation
+Sub BtnPilihTanggal_Click()
+    Dim tgl As Date
+    tgl = AskTargetDate()
+    If tgl <> 0 Then
+        Call GenerateCombinedFullReport(tgl)
     End If
 End Sub
-   
-    
-    
-    
-    
-    ' === Fungsi ambil file dari email Outlook (hari ini saja + debug) ===
-    Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String) As String
-        Dim olApp As Object, olNs As Object, olFolder As Object
-        Dim olItems As Object, olMail As Object, olAtmt As Object
-        Dim senderName As Variant
-        Dim targetDate As Date
-        Dim fullPath As String
-        Dim wbCheck As Workbook
-        
-        GetAttachmentFromEmail = ""
-        targetDate = Date   ' hanya email hari ini
-        fullPath = saveFolder & fileName
-        
-        ' --- Folder tujuan
-        saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
-        fullPath = saveFolder & fileName
-        
-        Debug.Print "=== MULAI Cari Attachment (HARI INI SAJA) ==="
-        Debug.Print "Target file   : " & fileName
-        Debug.Print "Target date   : " & Format(targetDate, "yyyy-mm-dd")
-        Debug.Print "Save folder   : " & saveFolder
-        
-        ' Buka Outlook
-        On Error Resume Next
-        Set olApp = GetObject(, "Outlook.Application")
-        If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
-        On Error GoTo 0
-        If olApp Is Nothing Then
-            Debug.Print "Gagal buka Outlook!"
-            Exit Function
-        End If
-        
-        ' Ambil folder Inbox
-        Set olNs = olApp.GetNamespace("MAPI")
-        Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
-        Set olItems = olFolder.Items
-        olItems.Sort "[ReceivedTime]", True
-        
-        Debug.Print "Total items inbox: " & olItems.Count
-        
-        ' Loop semua email
-        For Each olMail In olItems
-            If olMail.Class = 43 Then ' 43 = MailItem
-                If Int(olMail.ReceivedTime) = targetDate Then
-                    Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
-                    
-                    ' Cek semua kemungkinan nama pengirim
-                    For Each senderName In senderNames
-                        If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
-                            Debug.Print "  -> Pengirim cocok: " & senderName
-                            
-                            ' Loop semua lampiran
-                            For Each olAtmt In olMail.Attachments
-                                Debug.Print "     Lampiran: " & olAtmt.fileName
-                                If olAtmt.fileName = fileName Then
-                                    ' --- Hapus file lama jika ada
-                                    If Dir(fullPath) <> "" Then
-                                        Kill fullPath
-                                    End If
-                                    
-                                    ' --- Simpan attachment
-                                    olAtmt.SaveAsFile fullPath
-                                    Debug.Print "  -> File disimpan di: " & fullPath
-                                    
-                                    ' --- Break link jika file Excel
-                                    If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
-                                        On Error Resume Next
-                                        Set wbCheck = Workbooks.Open(fullPath)
-                                        wbCheck.BreakLink Name:=fullPath, Type:=xlLinkTypeExcelLinks
-                                        wbCheck.Close SaveChanges:=True
-                                        On Error GoTo 0
-                                    End If
-                                    
-                                    GetAttachmentFromEmail = fullPath
-                                    Exit Function
-                                End If
-                            Next olAtmt
-                        End If
-                    Next senderName
-                End If
-            End If
-        Next olMail
-        
-        If GetAttachmentFromEmail = "" Then
-            Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(targetDate, "yyyy-mm-dd") & ")"
-        End If
-        
-        Debug.Print "=== SELESAI ==="
-    End Function
-    
-' === Helper: Variasi nama bulan ===
-Function GetBulanVariasi(ByVal tgl As Date) As Variant
-    Dim bulan As Integer
-    bulan = Month(tgl)
-    
-    Select Case bulan
-        Case 1: GetBulanVariasi = Array("Januari", "Jan")
-        Case 2: GetBulanVariasi = Array("Februari", "Feb")
-        Case 3: GetBulanVariasi = Array("Maret", "Mar")
-        Case 4: GetBulanVariasi = Array("April", "Apr")
-        Case 5: GetBulanVariasi = Array("Mei", "May")
-        Case 6: GetBulanVariasi = Array("Juni", "Jun")
-        Case 7: GetBulanVariasi = Array("Juli", "Jul")
-        Case 8: GetBulanVariasi = Array("Agustus", "Agu", "Aug")
-        Case 9: GetBulanVariasi = Array("September", "Sep", "Sept")
-        Case 10: GetBulanVariasi = Array("Oktober", "Okt", "Oct")
-        Case 11: GetBulanVariasi = Array("November", "Nov")
-        Case 12: GetBulanVariasi = Array("Desember", "Des", "Dec")
-    End Select
-End Function
-
-' === Helper: Cari attachment dengan variasi nama file & bulan ===
-Function CariAttachment(senderList As Variant, namaBaseList As Variant, targetDate As Date) As String
-    Dim bulanList As Variant, tahunStr As String
-    Dim b As Variant, base As Variant, fullName As String
-    
-    tahunStr = Year(targetDate)
-    bulanList = GetBulanVariasi(targetDate)
-    
-    For Each base In namaBaseList
-        For Each b In bulanList
-            fullName = Replace(base, "{bulan}", b)
-            fullName = Replace(fullName, "{tahun}", tahunStr)
-            
-            CariAttachment = GetAttachmentFromEmail(senderList, fullName, Environ("TEMP") & "\")
-            If CariAttachment <> "" Then Exit Function
-        Next b
-    Next base
-    
-    CariAttachment = ""
-End Function
-
 
 ' === Sub utama membuat laporan gabungan multi-date ===
 Sub GenerateCombinedFullReport(Optional targetDate As Date)
@@ -167,11 +46,19 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     Application.AskToUpdateLinks = False
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
+       Application.StatusBar = "? Sedang memproses report untuk tanggal: " & Format(targetDate, "dd-mmm-yyyy")
+    Application.Cursor = xlWait
     
     ' === Tentukan lokasi penyimpanan ===
     savePath = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\"
     
-  If targetDate = 0 Then targetDate = Date - 1  ' default kemarin kalau kosong
+    If targetDate = 0 Then
+        targetDate = frmCalendar.GetDateFromCalendar()
+        If targetDate = 0 Then
+            MsgBox "Tidak ada tanggal dipilih.", vbExclamation
+            Exit Sub
+        End If
+    End If
     sheetName = Format(targetDate, "dd")
     
     ' === Tentukan file bulanan ===
@@ -222,18 +109,21 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     ptrFilePath = CariAttachment(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
                     Array("Pre-Treatment Production Report {bulan} {tahun}  (HO) Flowmeter.xlsx"), targetDate)
     
-    scdFilePath = CariAttachment(Array("Ferry Hermansyah Lubis"), _
+    scdFilePath = CariAttachment(Array("Putri Yolla Safitri", "Ferry Hermansyah Lubis"), _
                     Array("02.Daily Report SCD  Hydro Plant (HO) {bulan} {tahun}.xlsx", _
                           "02. Daily Report SCD Hydro Plant {bulan} {tahun}.xlsx"), targetDate)
     
-    cbsFilePath = CariAttachment(Array("Putri Yolla Safitri"), _
+    cbsFilePath = CariAttachment(Array("Putri Yolla Safitri", "Ferry Hermansyah Lubis"), _
                     Array("02. Report Daily CBS HO {bulan} {tahun}.xlsx"), targetDate)
     
-    marshoFilePath = CariAttachment(Array("Jessica Silvera"), _
-                    Array("09. Actual vs Planning {bulan} Marunda ({tahun}) 1.xlsx", _
-                          "09. Actual vs Planning {bulan} Marunda ({tahun}).xlsx"), targetDate)
+       Dim dayPrefix As String
+    dayPrefix = Format(targetDate, "mm")   ' contoh: 09, 12, 25
     
-    bioFilePath = CariAttachment(Array("Hani Wulandari"), _
+    marshoFilePath = CariAttachment(Array("Jessica Silvera"), _
+                        Array(dayPrefix & ". Actual vs Planning {bulan} Marunda ({tahun}) 1.xlsx", _
+                              dayPrefix & ". Actual vs Planning {bulan} Marunda ({tahun}).xlsx"), targetDate)
+    
+    bioFilePath = CariAttachment(Array("Hani Wulandari", "Wendy Fadillah Nugraha"), _
                     Array("Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter {bulan} {tahun}.xlsx", _
                           "Daily Report Production Glycerin & Biodiesel Plant Based on Flowmeter {bulan} {tahun} ``.xlsx"), targetDate)
     
@@ -290,16 +180,151 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
         currentRow = currentRow + 2
     End If
     
+        ' === Tambahan: CPO & CPKO ===
+    Call GenerateDailyStorageCPOCPKO(wsDest, currentRow, targetDate)
+    
     ' === Simpan hasil ===
     wbDest.Save
-    
+    ' Kembalikan kursor & status
+Application.Cursor = xlDefault
+Application.StatusBar = False
+Application.ScreenUpdating = True
+Application.DisplayAlerts = True
+
     MsgBox "Laporan gabungan selesai dibuat.", vbInformation
 End Sub
+   
+Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
+    Dim olApp As Object, olNs As Object, olFolder As Object
+    Dim olItems As Object, olMail As Object, olAtmt As Object
+    Dim senderName As Variant
+    Dim fullPath As String
+    Dim wbCheck As Workbook
+    Dim searchDate As Date   ' variabel lokal untuk H+1
+    
+    GetAttachmentFromEmail = ""
+    
+    ' Gunakan H+1, tapi jangan ubah targetDate asli
+    searchDate = targetDate + 1
+    
+    ' --- Folder tujuan ---
+    saveFolder = "Z:\Document Share (Marunda All)\Process Engineering\summary act vs budget\2025\Report\"
+    fullPath = saveFolder & fileName
+    
+    Debug.Print "=== MULAI Cari Attachment (H+1) ==="
+    Debug.Print "Target file   : " & fileName
+    Debug.Print "Target date   : " & Format(searchDate, "yyyy-mm-dd")
+    Debug.Print "Save folder   : " & saveFolder
+    
+    ' Buka Outlook
+    On Error Resume Next
+    Set olApp = GetObject(, "Outlook.Application")
+    If olApp Is Nothing Then Set olApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+    If olApp Is Nothing Then
+        Debug.Print "Gagal buka Outlook!"
+        Exit Function
+    End If
+    
+    ' Ambil folder Inbox
+    Set olNs = olApp.GetNamespace("MAPI")
+    Set olFolder = olNs.GetDefaultFolder(6) ' 6 = Inbox
+    Set olItems = olFolder.Items
+    olItems.Sort "[ReceivedTime]", True
+    
+    Debug.Print "Total items inbox: " & olItems.Count
+    
+    ' Loop semua email
+    For Each olMail In olItems
+        If olMail.Class = 43 Then ' 43 = MailItem
+            If Int(olMail.ReceivedTime) = searchDate Then
+                Debug.Print "Cek email: " & olMail.senderName & " | " & Format(olMail.ReceivedTime, "yyyy-mm-dd hh:nn:ss")
+                
+                ' Cek semua kemungkinan nama pengirim
+                For Each senderName In senderNames
+                    If InStr(1, olMail.senderName, senderName, vbTextCompare) > 0 Then
+                        Debug.Print "  -> Pengirim cocok: " & senderName
+                        
+                        ' Loop semua lampiran
+                        For Each olAtmt In olMail.Attachments
+                            Debug.Print "     Lampiran: " & olAtmt.fileName
+                            If olAtmt.fileName = fileName Then
+                                ' --- Hapus file lama jika ada
+                                If Dir(fullPath) <> "" Then Kill fullPath
+                                
+                                ' --- Simpan attachment
+                                olAtmt.SaveAsFile fullPath
+                                Debug.Print "  -> File disimpan di: " & fullPath
+                                
+                                ' --- Break link jika file Excel
+                                If Right(LCase(fullPath), 5) = ".xlsx" Or Right(LCase(fullPath), 4) = ".xls" Then
+                                    On Error Resume Next
+                                    Set wbCheck = Workbooks.Open(fullPath)
+                                    wbCheck.BreakLink Name:=fullPath, Type:=xlLinkTypeExcelLinks
+                                    wbCheck.Close SaveChanges:=True
+                                    On Error GoTo 0
+                                End If
+                                
+                                GetAttachmentFromEmail = fullPath
+                                Exit Function
+                            End If
+                        Next olAtmt
+                    End If
+                Next senderName
+            End If
+        End If
+    Next olMail
+    
+    If GetAttachmentFromEmail = "" Then
+        Debug.Print ">>> Attachment TIDAK ditemukan untuk hari ini (" & Format(searchDate, "yyyy-mm-dd") & ")"
+    End If
+    
+    Debug.Print "=== SELESAI ==="
+End Function
 
     
+' === Helper: Variasi nama bulan ===
+Function GetBulanVariasi(ByVal tgl As Date) As Variant
+    Dim bulan As Integer
+    bulan = Month(tgl)
     
+    Select Case bulan
+        Case 1: GetBulanVariasi = Array("Januari", "Jan")
+        Case 2: GetBulanVariasi = Array("Februari", "Feb")
+        Case 3: GetBulanVariasi = Array("Maret", "Mar")
+        Case 4: GetBulanVariasi = Array("April", "Apr")
+        Case 5: GetBulanVariasi = Array("Mei", "May")
+        Case 6: GetBulanVariasi = Array("Juni", "Jun")
+        Case 7: GetBulanVariasi = Array("Juli", "Jul")
+        Case 8: GetBulanVariasi = Array("Agustus", "Agu", "Aug")
+        Case 9: GetBulanVariasi = Array("September", "Sep", "Sept")
+        Case 10: GetBulanVariasi = Array("Oktober", "Okt", "Oct")
+        Case 11: GetBulanVariasi = Array("November", "Nov")
+        Case 12: GetBulanVariasi = Array("Desember", "Des", "Dec")
+    End Select
+End Function
+
+' === Helper: Cari attachment dengan variasi nama file & bulan ===
+Function CariAttachment(senderList As Variant, namaBaseList As Variant, targetDate As Date) As String
+    Dim bulanList As Variant, tahunStr As String
+    Dim b As Variant, base As Variant, fullName As String
     
+    tahunStr = Year(targetDate)
+    bulanList = GetBulanVariasi(targetDate)
     
+    For Each base In namaBaseList
+        For Each b In bulanList
+            fullName = Replace(base, "{bulan}", b)
+            fullName = Replace(fullName, "{tahun}", tahunStr)
+            
+            CariAttachment = GetAttachmentFromEmail(senderList, fullName, Environ("TEMP") & "\", targetDate)
+            If CariAttachment <> "" Then Exit Function
+        Next b
+    Next base
+    
+    CariAttachment = ""
+End Function
+
     
     ' ==== Fungsi pembagian aman ====
     Private Function SafeDiv(numerator As Double, denominator As Double) As Double
@@ -605,8 +630,7 @@ End Sub
         Set GetMatchingRowsByDate = matches
     End Function
     
-    
-    
+       
     ' ------------------ UTIL ------------------
     Function GetCellVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As Double
         Dim lastCol As Long, col As Long, h1 As String, h2 As String
@@ -857,6 +881,7 @@ NextSheet:
         Dim steamVal As Variant, electVal As Variant
         Dim firstMatchRow As Long, dataRow As Long
         Dim val As Variant, tempVal As Variant
+        Dim downtimeVal As String
     
         Set wb = Workbooks.Open(filePath, ReadOnly:=True)
         Set ws = wb.Sheets(sheetSource)
@@ -1113,11 +1138,8 @@ ErrorHandler:
         
         GetMergedHeader = val
     End Function
-    
-    
-    
-    
-    
+            
+  
     Function GetTextValBio(ws As Worksheet, targetRow As Long, ParamArray headers() As Variant) As String
         Dim headerRow1 As Long: headerRow1 = 8
         Dim headerRow2 As Long: headerRow2 = 9
@@ -1187,6 +1209,7 @@ ErrorHandler:
         Dim feedKg As Double, fameKg As Double
         Dim electVal As Variant, filterAidVal As Variant, waterVal As Variant
         Dim tempVal As Variant
+        Dim downtimeVal As String
         
         Set wb = Workbooks.Open(filePath, ReadOnly:=True)
         Set ws = wb.Sheets(sheetSource)
@@ -1711,8 +1734,8 @@ ErrorHandler:
             
             ' cek baris IN TONASE
             If Trim(UCase(cellVal)) = "IN TONASE" And machineName <> "" Then
-                planValue = val(ws.Cells(curRow, dataCol).Value)
-                actualValue = val(ws.Cells(curRow, dataCol + 1).Value)
+                planValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol).Value), 2)
+                actualValue = RoundNormal(CDbl(ws.Cells(curRow, dataCol + 1).Value), 2)
                 
                 If planValue <> 0 Then
                     perfValue = Round((actualValue / planValue) * 100, 2)
@@ -1830,9 +1853,159 @@ ErrorHandler:
         wsDest.Cells(startRow, 1).Font.Bold = True
     End Sub
     
+ Sub GenerateReport_ByCalendar()
+    Dim tgl As Date
+    tgl = UserForm1.GetDateFromCalendar
+    
+    If tgl <> 0 Then
+        Call GenerateCombinedFullReport(tgl)
+    Else
+        MsgBox "Tidak ada tanggal dipilih.", vbInformation
+    End If
+End Sub
     
     
+ Private Sub GenerateDailyStorageCPOCPKO(wsTarget As Worksheet, ByRef row As Long, targetDate As Date)
+    Dim cpoFilePath As String, cpkoFilePath As String
+    Dim sheetCodeCPO As String, sheetCodeCPKO As String
+    Dim cpoFFA As Double, cpkoFFA As Double
+    Dim cpoTotal As Double, cpkoTotal As Double
+    Dim monthName As String, folderCPKO As String, folderCPO As String
     
+    sheetCodeCPO = Format(targetDate, "ddmm")
+    sheetCodeCPKO = Format(targetDate, "dd")
+    monthName = GetIndonesianMonth(Month(targetDate), Year(targetDate))
     
+    ' --- File CPO (Palmitic) ---
+    folderCPO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\"
+    cpoFilePath = folderCPO & "8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
+    If Dir(cpoFilePath) = "" Then
+        cpoFilePath = CariFileDailyStorage(folderCPO, monthName, "PALMITIC")
+    End If
     
+    ' --- File CPKO (Non Palmitic) ---
+    folderCPKO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\"
+    cpkoFilePath = folderCPKO & "07. Daily Storage " & monthName & " (Non Palmitic Base).xlsx"
+    If Dir(cpkoFilePath) = "" Then
+        cpkoFilePath = CariFileDailyStorage(folderCPKO, monthName, "NON PALMITIC")
+    End If
+    
+    ' --- Hitung CPO ---
+    Call GetCPOCPKOValue(cpoFilePath, sheetCodeCPO, "CPO", cpoFFA, cpoTotal)
+    
+    ' --- Hitung CPKO ---
+    Call GetCPOCPKOValue(cpkoFilePath, sheetCodeCPKO, "CPKO", cpkoFFA, cpkoTotal)
+    
+    ' --- Output ke sheet target ---
+'    wsTarget.Cells(row, 1).Value = "DAILY STORAGE CPO & CPKO"
+'    row = row + 1
+'    wsTarget.Cells(row, 1).Value = "Tanggal : " & Format(targetDate, "dd/mm/yyyy")
+'    row = row + 1
+    wsTarget.Cells(row, 1).Value = "CPO Stock : " & Format(cpoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpoFFA, "0.00")
+    row = row + 1
+    wsTarget.Cells(row, 1).Value = "CPKO Stock : " & Format(cpkoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpkoFFA, "0.00")
+    row = row + 2
+End Sub
+   
+   
+Private Function CariFileDailyStorage(folderPath As String, bulanTahun As String, keyword As String) As String
+    Dim f As String, targetNama As String
+    targetNama = UCase("Daily Storage " & bulanTahun)
+    
+    f = Dir(folderPath & "*.xlsx")
+    Do While f <> ""
+        If InStr(1, UCase(f), targetNama) > 0 _
+           And InStr(1, UCase(f), UCase(keyword)) > 0 Then
+           CariFileDailyStorage = folderPath & f
+           Exit Function
+        End If
+        f = Dir
+    Loop
+    CariFileDailyStorage = ""
+End Function
+
+Private Function GetIndonesianMonth(ByVal bulan As Integer, ByVal tahun As Integer) As String
+    Dim namaBulan As Variant
+    namaBulan = Array("", "Januari", "Februari", "Maret", "April", "Mei", "Juni", _
+                          "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+    GetIndonesianMonth = namaBulan(bulan) & " " & tahun
+End Function
+   
+' ========================
+' Ambil nilai CPO / CPKO
+' ========================
+Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, ByRef ffaValue As Double, ByRef totalStock As Double)
+    Dim wb As Workbook, ws As Worksheet
+    Dim i As Long, sumWeighted As Double, sumStock As Double
+    Dim colQty As String, colFFA As String, rowStart As Long, rowEnd As Long
+    
+    On Error GoTo ErrHandler
+    Debug.Print labelName & " >> cek file: " & filePath
+    
+    If Dir(filePath) = "" Then
+        Debug.Print labelName & " >> FILE TIDAK DITEMUKAN: " & filePath
+        ffaValue = 0: totalStock = 0
+        Exit Sub
+    End If
+    
+    ' coba attach kalau file sudah dibuka
+    On Error Resume Next
+    Set wb = GetObject(filePath)
+    On Error GoTo 0
+    If wb Is Nothing Then
+        Set wb = Workbooks.Open( _
+            fileName:=filePath, _
+            ReadOnly:=True, _
+            UpdateLinks:=0, _
+            IgnoreReadOnlyRecommended:=True, _
+            Notify:=False)
+    End If
+    
+    If wb Is Nothing Then
+        Debug.Print labelName & " >> GAGAL buka file (dikunci/error)."
+        ffaValue = 0: totalStock = 0
+        Exit Sub
+    End If
+    
+    On Error Resume Next
+    Set ws = wb.Sheets(sheetCode)
+    On Error GoTo ErrHandler
+    
+    If ws Is Nothing Then
+        Debug.Print labelName & " >> SHEET " & sheetCode & " TIDAK ADA"
+        ffaValue = 0: totalStock = 0
+    Else
+        If labelName = "CPO" Then
+            colQty = "G": colFFA = "I": rowStart = 8: rowEnd = 23
+        ElseIf labelName = "CPKO" Then
+            colQty = "F": colFFA = "H": rowStart = 8: rowEnd = 17
+        End If
+        
+        sumWeighted = 0: sumStock = 0
+        For i = rowStart To rowEnd
+            If IsNumeric(ws.Range(colQty & i).Value) And IsNumeric(ws.Range(colFFA & i).Value) Then
+                sumWeighted = sumWeighted + (ws.Range(colQty & i).Value * ws.Range(colFFA & i).Value)
+                sumStock = sumStock + ws.Range(colQty & i).Value
+            End If
+        Next i
+        
+        totalStock = sumStock
+        If sumStock > 0 Then
+            ffaValue = sumWeighted / sumStock
+        Else
+            ffaValue = 0
+        End If
+        Debug.Print labelName & " >> TotalStock=" & totalStock & ", FFA=" & ffaValue
+    End If
+    
+    wb.Close SaveChanges:=False
+    Exit Sub
+    
+ErrHandler:
+    Debug.Print labelName & " >> ERROR membuka file. " & Err.Description
+    ffaValue = 0: totalStock = 0
+    On Error Resume Next: wb.Close SaveChanges:=False
+End Sub
+
+
 
