@@ -95,7 +95,7 @@ End Function
 
 
 ' ====================================================
-' Sub Utama: GetFillingGlycerine (versi fix merge cell + copy value background)
+' Sub Utama: GetFillingGlycerine (versi fix merge cell + copy value background + single output)
 ' ====================================================
 Sub GetFillingGlycerine()
     On Error GoTo ErrHandler
@@ -154,28 +154,49 @@ Sub GetFillingGlycerine()
             Debug.Print "Tanggal dicari: " & targetDay & _
                         " | Jumlah baris cocok: " & matchingRows.Count
             
-            ' === ambil setiap baris hasil ===
-For Each r In matchingRows
-    volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
-    
-    Debug.Print "Row source: " & r & _
-                " | Plant: " & plantLabel & _
-                " | VolumeProduct(raw): " & volumeProduct & _
-                " | Rounded: " & Round(volumeProduct / 1000, 0) & " MT"
-    
-    ' Tulis header plant dulu
-    wsDest.Cells(row, 1).Value = plantLabel
-    row = row + 1
-    
-    If volumeProduct > 0 Then
-        wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(volumeProduct / 1000, 0) & " MT"
-    Else
-        wsDest.Cells(row, 1).Value = "Stop Plant (fit to PPIC Planning)"
-    End If
-    row = row + 1
-Next r
-
-
+            ' === PROSES PRODUKSI ===
+            Dim firstValue As Variant
+            Dim allSame As Boolean
+            firstValue = Empty
+            allSame = True
+            
+            ' Loop untuk cek apakah semua nilai produksi sama
+            For Each r In matchingRows
+                volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
+                
+                If IsEmpty(firstValue) Then
+                    firstValue = volumeProduct
+                Else
+                    If volumeProduct <> firstValue Then allSame = False
+                End If
+            Next r
+            
+            ' === Tulis header plant sekali ===
+            wsDest.Cells(row, 1).Value = UCase(plantLabel)
+            row = row + 1
+            
+            ' === Tulis hasil sesuai kondisi ===
+            If firstValue = 0 Then
+                wsDest.Cells(row, 1).Value = "Stop Plant (fit to PPIC Planning)"
+                row = row + 1
+            ElseIf allSame Then
+                wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(firstValue / 1000, 0) & " MT"
+                row = row + 1
+            Else
+                ' Kalau beda-beda, tulis semua baris seperti biasa
+                For Each r In matchingRows
+                    volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
+                    
+                    If volumeProduct > 0 Then
+                        wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(volumeProduct / 1000, 0) & " MT"
+                    Else
+                        wsDest.Cells(row, 1).Value = "Stop Plant (fit to PPIC Planning)"
+                    End If
+                    row = row + 1
+                Next r
+            End If
+            row = row + 1 ' kosongkan satu baris sebelum plant berikutnya
+            
         Else
             Debug.Print "Lewati sheet: " & xlWs.Name
         End If
@@ -194,6 +215,7 @@ ErrHandler:
     If Not xlWb Is Nothing Then xlWb.Close False
     If Not xlApp Is Nothing Then xlApp.Quit
 End Sub
+
 
 
 Function GetMatchingRowsByDate(ws As Worksheet, targetDate As Date) As Collection
