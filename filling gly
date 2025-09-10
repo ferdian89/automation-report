@@ -1,12 +1,15 @@
+' ====================================================
+' Ambil attachment dari Outlook dan simpan
+' ====================================================
 Function GetAttachment_FillingGly(Optional targetDay As Date) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim fileName As String, savePath As String
-    Dim xlApp As Object, wb As Object, ws As Object
+    
+    If targetDay = 0 Then targetDay = Date
     
     fileName = "Daily Report Production Filling Glycerin Plant September 2025.xlsx"
     savePath = Environ("TEMP") & "\" & fileName
-    If targetDay = 0 Then targetDay = Date
     
     Debug.Print "=== LOG GetAttachment_FillingGly ==="
     Debug.Print "Target Date : " & Format(targetDay, "dd-mmm-yyyy")
@@ -39,7 +42,6 @@ Function GetAttachment_FillingGly(Optional targetDay As Date) As String
                     For Each olAtmt In olMail.Attachments
                         Debug.Print "   - Attachment: " & olAtmt.fileName
                         
-                        ' Pencocokan fleksibel nama file
                         If InStr(1, olAtmt.fileName, "Filling Glycerin", vbTextCompare) > 0 Then
                             Debug.Print ">> Cocok! Simpan ke: " & savePath
                             
@@ -52,30 +54,8 @@ Function GetAttachment_FillingGly(Optional targetDay As Date) As String
                             olAtmt.SaveAsFile savePath
                             Debug.Print "SUCCESS: Attachment disimpan!"
                             
-                            ' === Tambahan: convert ke value only di background ===
-                            On Error Resume Next
-                            Set xlApp = CreateObject("Excel.Application")
-                            On Error GoTo 0
-                            If xlApp Is Nothing Then
-                                Debug.Print "ERROR: Tidak bisa buka Excel instance!"
-                                GetAttachment_FillingGly = savePath
-                                Exit Function
-                            End If
-                            
-                            xlApp.Visible = False
-                            xlApp.DisplayAlerts = False
-                            Set wb = xlApp.Workbooks.Open(savePath, ReadOnly:=False)
-                            
-                            For Each ws In wb.Worksheets
-                                ws.UsedRange.Value = ws.UsedRange.Value
-                            Next
-                            
-                            wb.Close SaveChanges:=True
-                            xlApp.Quit
-                            
-                            Set wb = Nothing
-                            Set xlApp = Nothing
-                            ' ========================================
+                            ' Konversi ke value only
+                            ConvertWorkbookToValues savePath
                             
                             GetAttachment_FillingGly = savePath
                             Exit Function
@@ -86,16 +66,44 @@ Function GetAttachment_FillingGly(Optional targetDay As Date) As String
         End If
     Next
     
-    ' Kalau tidak ketemu
     Debug.Print "WARNING: Attachment tidak ditemukan."
     GetAttachment_FillingGly = ""
 End Function
 
+' ====================================================
+' Fungsi helper: Convert semua sheet di workbook ke value only
+' ====================================================
+Sub ConvertWorkbookToValues(filePath As String)
+    Dim xlApp As Object, wb As Object, ws As Object
+    
+    On Error Resume Next
+    Set xlApp = CreateObject("Excel.Application")
+    On Error GoTo 0
+    If xlApp Is Nothing Then
+        Debug.Print "ERROR: Tidak bisa buka Excel instance!"
+        Exit Sub
+    End If
+    
+    xlApp.Visible = False
+    xlApp.DisplayAlerts = False
+    
+    Set wb = xlApp.Workbooks.Open(filePath, ReadOnly:=False)
+    
+    For Each ws In wb.Worksheets
+        ws.UsedRange.Value = ws.UsedRange.Value
+    Next
+    
+    wb.Close SaveChanges:=True
+    xlApp.Quit
+    
+    Set wb = Nothing
+    Set xlApp = Nothing
+End Sub
 
 
 
 ' ====================================================
-' Sub Utama: GetFillingGlycerine (versi fix merge cell + copy value background + single output)
+' Sub Utama: GetFillingGlycerine (versi fix merge cell + value only + single output)
 ' ====================================================
 Sub GetFillingGlycerine()
     On Error GoTo ErrHandler
@@ -119,7 +127,7 @@ Sub GetFillingGlycerine()
     searchValueDate = targetDay
     sheetName = Format(searchValueDate, "dd")
     
-    ' ==== ambil file lampiran (sudah otomatis value only) ====
+    ' ==== ambil file lampiran & otomatis value only ====
     tempFile = GetAttachment_FillingGly(searchValueDate)
     If tempFile = "" Then
         MsgBox "File Filling Glycerine tidak ditemukan.", vbExclamation
@@ -171,7 +179,7 @@ Sub GetFillingGlycerine()
                 End If
             Next r
             
-            ' === Tulis header plant sekali ===
+            ' === Tulis header plant sekali (huruf besar) ===
             wsDest.Cells(row, 1).Value = UCase(plantLabel)
             row = row + 1
             
@@ -215,6 +223,7 @@ ErrHandler:
     If Not xlWb Is Nothing Then xlWb.Close False
     If Not xlApp Is Nothing Then xlApp.Quit
 End Sub
+
 
 
 
@@ -315,16 +324,7 @@ Function GetCellVal(ws As Worksheet, rowNum As Long, header1 As String, header2 
     End If
     Debug.Print "========================"
 End Function
-
-
-
-
-
-
-
-
-
-    
+   
 Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As String, h1Row As Long, h2Row As Long) As String
         Dim lastCol As Long, col As Long, h1 As String, h2 As String
         lastCol = ws.Cells(h1Row, ws.Columns.Count).End(xlToLeft).Column
@@ -338,6 +338,7 @@ Function GetTextVal(ws As Worksheet, row As Long, h1Text As String, h2Text As St
         Next col
         GetTextVal = ""
     End Function
+
 
 Function FindHeaderColumn(ws As Worksheet, header1 As String, header2 As String) As Long
     Dim c As Long, lastCol As Long
@@ -376,25 +377,3 @@ Function FindHeaderColumn(ws As Worksheet, header1 As String, header2 As String)
         Debug.Print "Header tidak ditemukan: " & header1 & " + " & header2
     End If
 End Function
-
-
-
-Function GetDisplayedNumber(ws As Worksheet, rowNum As Long, colNum As Long) As Double
-    Dim disp As String
-    disp = Trim(ws.Cells(rowNum, colNum).Text) ' ambil angka yang tampil di layar
-    
-    Debug.Print "=== GetDisplayedNumber Debug ==="
-    Debug.Print "Worksheet   : " & ws.Name
-    Debug.Print "Cell addr   : " & ws.Cells(rowNum, colNum).Address
-    Debug.Print "Displayed   : " & disp
-    
-    If IsNumeric(disp) Then
-        GetDisplayedNumber = CDbl(disp)
-        Debug.Print "Converted   : " & GetDisplayedNumber
-    Else
-        GetDisplayedNumber = 0
-        Debug.Print "Bukan angka, return 0"
-    End If
-    Debug.Print "========================"
-End Function
-
