@@ -2,6 +2,7 @@ Function GetAttachment_FillingGly(Optional targetDay As Date) As String
     Dim olApp As Object, olNs As Object, olFolder As Object
     Dim olItems As Object, olMail As Object, olAtmt As Object
     Dim fileName As String, savePath As String
+    Dim xlApp As Object, wb As Object, ws As Object
     
     fileName = "Daily Report Production Filling Glycerin Plant September 2025.xlsx"
     savePath = Environ("TEMP") & "\" & fileName
@@ -49,9 +50,34 @@ Function GetAttachment_FillingGly(Optional targetDay As Date) As String
                             
                             ' Simpan attachment
                             olAtmt.SaveAsFile savePath
-                            GetAttachment_FillingGly = savePath
-                            
                             Debug.Print "SUCCESS: Attachment disimpan!"
+                            
+                            ' === Tambahan: convert ke value only di background ===
+                            On Error Resume Next
+                            Set xlApp = CreateObject("Excel.Application")
+                            On Error GoTo 0
+                            If xlApp Is Nothing Then
+                                Debug.Print "ERROR: Tidak bisa buka Excel instance!"
+                                GetAttachment_FillingGly = savePath
+                                Exit Function
+                            End If
+                            
+                            xlApp.Visible = False
+                            xlApp.DisplayAlerts = False
+                            Set wb = xlApp.Workbooks.Open(savePath, ReadOnly:=False)
+                            
+                            For Each ws In wb.Worksheets
+                                ws.UsedRange.Value = ws.UsedRange.Value
+                            Next
+                            
+                            wb.Close SaveChanges:=True
+                            xlApp.Quit
+                            
+                            Set wb = Nothing
+                            Set xlApp = Nothing
+                            ' ========================================
+                            
+                            GetAttachment_FillingGly = savePath
                             Exit Function
                         End If
                     Next
@@ -64,6 +90,7 @@ Function GetAttachment_FillingGly(Optional targetDay As Date) As String
     Debug.Print "WARNING: Attachment tidak ditemukan."
     GetAttachment_FillingGly = ""
 End Function
+
 
 
 
@@ -88,7 +115,7 @@ Sub GetFillingGlycerine()
     plantLabel = "Filling Glycerin Plant"
     
     ' ==== inisialisasi ====
-    targetDay = Date - 1
+    targetDay = Date - 2
     searchValueDate = targetDay
     sheetName = Format(searchValueDate, "dd")
     
@@ -128,19 +155,27 @@ Sub GetFillingGlycerine()
                         " | Jumlah baris cocok: " & matchingRows.Count
             
             ' === ambil setiap baris hasil ===
-            For Each r In matchingRows
-                volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
-                
-                Debug.Print "Row source: " & r & _
-                            " | Plant: " & plantLabel & _
-                            " | VolumeProduct(raw): " & volumeProduct & _
-                            " | Rounded: " & Round(volumeProduct / 1000, 0) & " MT"
-                
-                If volumeProduct > 0 Then
-                    wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(volumeProduct / 1000, 0) & " MT"
-                    row = row + 1
-                End If
-            Next r
+For Each r In matchingRows
+    volumeProduct = GetCellVal(xlWs, CLng(r), "ACTUAL FINISH PRODUCT", "TOTAL ACTUAL", 7, 10)
+    
+    Debug.Print "Row source: " & r & _
+                " | Plant: " & plantLabel & _
+                " | VolumeProduct(raw): " & volumeProduct & _
+                " | Rounded: " & Round(volumeProduct / 1000, 0) & " MT"
+    
+    ' Tulis header plant dulu
+    wsDest.Cells(row, 1).Value = plantLabel
+    row = row + 1
+    
+    If volumeProduct > 0 Then
+        wsDest.Cells(row, 1).Value = "Glycerine HDPE Drum/IBC = " & Round(volumeProduct / 1000, 0) & " MT"
+    Else
+        wsDest.Cells(row, 1).Value = "Stop Plant (fit to PPIC Planning)"
+    End If
+    row = row + 1
+Next r
+
+
         Else
             Debug.Print "Lewati sheet: " & xlWs.Name
         End If
