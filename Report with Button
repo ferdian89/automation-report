@@ -29,7 +29,10 @@ Sub BtnPilihTanggal_Click()
         Call GenerateCombinedFullReport(tgl)
     End If
 End Sub
-
+Sub UpdateStatus(task As String, targetDate As Date)
+    Application.StatusBar = "? " & task & " | " & Format(targetDate, "dd-mmm-yyyy")
+    DoEvents   ' supaya Excel UI langsung refresh
+End Sub
 ' === Sub utama membuat laporan gabungan multi-date ===
 Sub GenerateCombinedFullReport(Optional targetDate As Date)
   Dim sheetName As String
@@ -67,7 +70,8 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     
     ' === Buka file bulanan, atau buat baru ===
     On Error Resume Next
-    Set wbDest = Workbooks.Open(monthFile)
+    Set wbDest = Workbooks.Open(monthFile, UpdateLinks:=3)
+    Application.DisplayAlerts = True
     On Error GoTo 0
     
     If wbDest Is Nothing Then
@@ -84,7 +88,6 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     If Not wsDest Is Nothing Then
         Application.DisplayAlerts = False
         wsDest.Delete
-        Application.DisplayAlerts = True
     End If
     On Error GoTo 0
     
@@ -92,6 +95,18 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     wsDest.Name = sheetName
     wsDest.Tab.Color = RGB(255, 0, 0)
     currentRow = 1
+    
+    ' === Tambahkan header laporan ===
+With wsDest
+    .Cells(currentRow, 1).Value = "SMART MARUNDA"
+    .Cells(currentRow, 1).Font.Bold = True
+    .Cells(currentRow, 1).Font.Size = 13
+    currentRow = currentRow + 1
+    
+    .Cells(currentRow, 1).Value = Format(targetDate, "dd-mmmm-yyyy")
+    .Cells(currentRow, 1).Font.Size = 11
+    currentRow = currentRow + 1
+End With
     
     ' === Siapkan Summary sheet ===
     On Error Resume Next
@@ -133,16 +148,22 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     
     ' === Refinery ===
     If refFilePath <> "" Then
+        UpdateStatus "Sedang memproses Ref 1", targetDate
         Call GenerateRefReportPart(refFilePath, "Ref 1", "REFINERY PLANT 1", wsDest, currentRow, Day(targetDate))
+        
+        UpdateStatus "Sedang memproses Ref 2", targetDate
         Call GenerateRefReportPart(refFilePath, "Ref 2", "REFINERY PLANT 2", wsDest, currentRow, Day(targetDate))
+        
+        UpdateStatus "Sedang memproses Ref 3", targetDate
         Call GenerateRefReportPart(refFilePath, "Ref 3 ", "REFINERY PLANT 3", wsDest, currentRow, Day(targetDate))
     Else
         wsDest.Cells(currentRow, 1).Value = "File Refinery tidak ditemukan"
         currentRow = currentRow + 2
     End If
-
+    
     ' === PTR ===
     If ptrFilePath <> "" Then
+        UpdateStatus "Sedang memproses PTR", targetDate
         Call GenerateRefReportPart(ptrFilePath, "PTR", "PRE-TREATMENT", wsDest, currentRow, Day(targetDate))
     Else
         wsDest.Cells(currentRow, 1).Value = "File PTR tidak ditemukan"
@@ -151,22 +172,30 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     
     Call SumCPOProcessed(wsDest, currentRow)
     currentRow = currentRow + 2
-
+    
     ' === Fractination ===
     If refFilePath <> "" Then
+        UpdateStatus "Sedang memproses Fractination 1", targetDate
         Call GenerateFractinationReport(refFilePath, "FRACT 1", "FRACTINATION PLANT 1", wsDest, currentRow, Day(targetDate))
+        
+        UpdateStatus "Sedang memproses Fractination 2", targetDate
         Call GenerateFractinationReport(refFilePath, "FRACT 2", "FRACTINATION PLANT 2", wsDest, currentRow, Day(targetDate))
     End If
-
+    
     ' --- Plant HO ---
+    UpdateStatus "Sedang memproses SCD/IE/HYD", targetDate
     Call ProcessPlantFile(wsDest, scdFilePath, targetDate, "SCD/IE/HYD", currentRow)
-
+    
     ' --- Plant CBS ---
+    UpdateStatus "Sedang memproses CBS", targetDate
     Call ProcessPlantFile(wsDest, cbsFilePath, targetDate, "CBS", currentRow)
     
     ' === MARSHO FILLING ===
     If marshoFilePath <> "" Then
+        UpdateStatus "Sedang memproses Marsho", targetDate
         Call GenerateMarshoPlantReport(marshoFilePath, "Marunda-Marsho", wsDest, currentRow, targetDate, wsSummary, sumRow)
+        
+        UpdateStatus "Sedang memproses Oil Filling", targetDate
         Call GenerateFillingPlantReport(marshoFilePath, "Marunda-Oil", wsDest, currentRow, targetDate, wsSummary, sumRow)
     Else
         wsDest.Cells(currentRow, 1).Value = "File Marsho tidak ditemukan"
@@ -175,35 +204,68 @@ Sub GenerateCombinedFullReport(Optional targetDate As Date)
     
     ' === Biodiesel ===
     If bioFilePath <> "" Then
+        UpdateStatus "Sedang memproses BIO", targetDate
         Call GenerateBIOReportPart(bioFilePath, "BIO", "BIODIESEL PLANT", wsDest, currentRow, targetDate)
+        
+        UpdateStatus "Sedang memproses CLR", targetDate
         Call GenerateCLRReport(bioFilePath, "CLR", "CLR PLANT", wsDest, currentRow, targetDate)
+        
+        UpdateStatus "Sedang memproses GLY 1", targetDate
         Call GenerateGlycerineReport(bioFilePath, "GLY", "GLYCERIN PLANT", wsDest, currentRow, targetDate)
+        
+        UpdateStatus "Sedang memproses GLY 2", targetDate
         Call GenerateGlycerineReport(bioFilePath, "GLY2", "GLYCERIN PLANT 2", wsDest, currentRow, targetDate)
     Else
         wsDest.Cells(currentRow, 1).Value = "File Biodiesel tidak ditemukan"
         currentRow = currentRow + 2
     End If
     
-        ' === Filling Glycerine ===
+    ' === Filling Glycerine ===
     If fillGlyPath <> "" Then
+        UpdateStatus "Sedang memproses Filling Glycerine", targetDate
         Call GenerateFillingGlyReport(fillGlyPath, "GLY-FILL", "FILLING GLYCERIN PLANT", wsDest, currentRow, targetDate)
     Else
         wsDest.Cells(currentRow, 1).Value = "File Filling Glycerine tidak ditemukan"
         currentRow = currentRow + 2
     End If
     
-        ' === Tambahan: CPO & CPKO ===
+    ' === Tambahan: CPO & CPKO ===
+    UpdateStatus "Sedang memproses Storage CPO & CPKO", targetDate
     Call GenerateDailyStorageCPOCPKO(wsDest, currentRow, targetDate)
     
     ' === Simpan hasil ===
     wbDest.Save
+    
+'    ' === Kirim Email ===
+'Dim OutApp As Object, OutMail As Object
+'Dim mailBody As String
+'
+'mailBody = "Halo," & vbCrLf & vbCrLf & _
+'           "Berikut terlampir laporan gabungan SMART MARUNDA tanggal " & Format(targetDate, "dd mmmm yyyy") & "." & vbCrLf & vbCrLf & _
+'           "Salam," & vbCrLf & "System Report"
+'
+'On Error Resume Next
+'Set OutApp = CreateObject("Outlook.Application")
+'Set OutMail = OutApp.CreateItem(0)
+'
+'With OutMail
+'    .To = "ferdian.mail22@gmail.com"
+'    .Subject = "Laporan SMART MARUNDA - " & Format(targetDate, "dd mmmm yyyy")
+'    .Body = mailBody
+'    .Attachments.Add monthFile   ' lampirkan file hasil report
+'    .Send   ' langsung kirim
+'End With
+
+On Error GoTo 0
+Set OutMail = Nothing
+Set OutApp = Nothing
     ' Kembalikan kursor & status
 Application.Cursor = xlDefault
 Application.StatusBar = False
 Application.ScreenUpdating = True
 Application.DisplayAlerts = True
 
-    MsgBox "Laporan gabungan selesai dibuat.", vbInformation
+    MsgBox "Laporan gabungan beres Bos...", vbInformation
 End Sub
    
 Function GetAttachmentFromEmail(senderNames As Variant, fileName As String, saveFolder As String, targetDate As Date) As String
@@ -308,7 +370,7 @@ Function GetBulanVariasi(ByVal tgl As Date) As Variant
         Case 5: GetBulanVariasi = Array("Mei", "May")
         Case 6: GetBulanVariasi = Array("Juni", "Jun")
         Case 7: GetBulanVariasi = Array("Juli", "Jul")
-        Case 8: GetBulanVariasi = Array("Agustus", "Agu", "Aug")
+        Case 8: GetBulanVariasi = Array("Agustus", "Agu", "Aug", "August")
         Case 9: GetBulanVariasi = Array("September", "Sep", "Sept")
         Case 10: GetBulanVariasi = Array("Oktober", "Okt", "Oct")
         Case 11: GetBulanVariasi = Array("November", "Nov")
@@ -1312,7 +1374,7 @@ ErrorHandler:
     
             ' Electricity
             If IsNumeric(electVal) Then
-                .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.0") & " Kwh/MT Crude FAME"
+                .Cells(row, 1).Value = "Electricity : " & Format(electVal, "0.00") & " Kwh/MT Crude FAME"
             Else
                 .Cells(row, 1).Value = "Electricity : N/A"
             End If
@@ -1320,7 +1382,7 @@ ErrorHandler:
     
             ' Filter Aid
             If IsNumeric(filterAidVal) Then
-                .Cells(row, 1).Value = "Filter Aid : " & Format(filterAidVal, "0.0") & " Kg/MT Crude FAME"
+                .Cells(row, 1).Value = "Filter Aid : " & Format(filterAidVal, "0.00") & " Kg/MT Crude FAME"
             Else
                 .Cells(row, 1).Value = "Filter Aid : N/A"
             End If
@@ -1328,7 +1390,7 @@ ErrorHandler:
     
             ' Water
             If IsNumeric(waterVal) Then
-                .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.0") & " m3/MT Crude FAME"
+                .Cells(row, 1).Value = "Water : " & Format(waterVal, "0.00") & " m3/MT Crude FAME"
             Else
                 .Cells(row, 1).Value = "Water : N/A"
             End If
