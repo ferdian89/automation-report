@@ -3,9 +3,9 @@ Sub DailyStorageCPO()
     Dim sheetName As String, todayDay As Integer, todayMonth As Integer, todayYear As Integer
     Dim sheetCodeCPO As String, sheetCodeCPKO As String
     Dim wsTarget As Worksheet
-    Dim cpoFFA As Double, cpkoFFA As Double
     Dim cpoTotal As Double, cpkoTotal As Double
     Dim monthName As String, folderCPKO As String, folderCPO As String
+    Dim qtyCons As Double, qtyBulk As Double, qtyHigh As Double
     
     todayDay = Day(Date - 1)
     todayMonth = Month(Date - 1)
@@ -46,27 +46,31 @@ Sub DailyStorageCPO()
     On Error GoTo 0
     
     ' --- Hitung CPO ---
-    Call GetCPOCPKOValue(cpoFilePath, sheetCodeCPO, "CPO", cpoFFA, cpoTotal)
+    Call GetCPOCPKOValue(cpoFilePath, sheetCodeCPO, "CPO", cpoTotal, qtyCons, qtyBulk, qtyHigh)
     
     ' --- Hitung CPKO ---
-    Call GetCPOCPKOValue(cpkoFilePath, sheetCodeCPKO, "CPKO", cpkoFFA, cpkoTotal)
-
-    ' --- Tulis hasil ke sheet target ---
+    Call GetCPOCPKOValue(cpkoFilePath, sheetCodeCPKO, "CPKO", cpkoTotal, 0, 0, 0)
+    
+    ' --- Tulis hasil ke sheet ---
     wsTarget.Range("A1").Value = "Tanggal : " & Format(Date - 1, "dd/mm/yyyy")
-    wsTarget.Range("A2").Value = "CPO Stock : " & Format(cpoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpoFFA, "0.00")
-    wsTarget.Range("A3").Value = "CPKO Stock : " & Format(cpkoTotal / 1000, "#,##0") & " MT -----------> FFA > " & Format(cpkoFFA, "0.00")
-
+    
+    wsTarget.Range("A2").Value = "CPO Stock"
+    wsTarget.Range("A3").Value = "- Consumer : " & Format(qtyCons / 1000, "#,##0") & " MT"
+    wsTarget.Range("A4").Value = "- Bulk     : " & Format(qtyBulk / 1000, "#,##0") & " MT"
+    wsTarget.Range("A5").Value = "- High FFA : " & Format(qtyHigh / 1000, "#,##0") & " MT"
+    
+    wsTarget.Range("A7").Value = "CPKO Stock : " & Format(cpkoTotal / 1000, "#,##0") & " MT"
+    
     Application.ScreenUpdating = True
     MsgBox "Laporan CPO/CPKO berhasil dibuat di sheet '" & sheetName & "'", vbInformation
 End Sub
-
 
 ' ========================
 ' Cari file Daily Storage (generic)
 ' ========================
 Private Function CariFileDailyStorage(folderPath As String, bulanTahun As String, keyword As String) As String
     Dim f As String, targetNama As String
-    targetNama = UCase("Daily Storage " & bulanTahun)   ' contoh: "DAILY STORAGE AGUSTUS 2025"
+    targetNama = UCase("Daily Storage " & bulanTahun)
     
     f = Dir(folderPath & "*.xlsx")
     Do While f <> ""
@@ -80,7 +84,6 @@ Private Function CariFileDailyStorage(folderPath As String, bulanTahun As String
     CariFileDailyStorage = ""
 End Function
 
-
 ' ========================
 ' Nama bulan Indonesia
 ' ========================
@@ -91,80 +94,121 @@ Private Function GetIndonesianMonth(ByVal bulan As Integer, ByVal tahun As Integ
     GetIndonesianMonth = namaBulan(bulan) & " " & tahun
 End Function
 
-
 ' ========================
 ' Ambil nilai CPO / CPKO
 ' ========================
-Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, ByRef ffaValue As Double, ByRef totalStock As Double)
+Sub GetCPOCPKOValue(filePath As String, sheetCode As String, labelName As String, _
+                    ByRef totalStock As Double, _
+                    ByRef qtyConsumer As Double, ByRef qtyBulk As Double, _
+                    ByRef qtyHighFFA As Double)
+
     Dim wb As Workbook, ws As Worksheet
-    Dim i As Long, sumWeighted As Double, sumStock As Double
-    Dim colQty As String, colFFA As String, rowStart As Long, rowEnd As Long
+    Dim colQty As String, colFFA As String
+    Dim rowStart As Long, rowEnd As Long, i As Long
+    Dim q As Variant, ffa As Variant
     
-    On Error GoTo ErrHandler
-    Debug.Print labelName & " >> cek file: " & filePath
+    qtyConsumer = 0: qtyBulk = 0: qtyHighFFA = 0
+    totalStock = 0
     
-    If Dir(filePath) = "" Then
-        Debug.Print labelName & " >> FILE TIDAK DITEMUKAN: " & filePath
-        ffaValue = 0: totalStock = 0
-        Exit Sub
-    End If
+    If Dir(filePath) = "" Then Exit Sub
     
-    ' coba attach kalau file sudah dibuka
-    On Error Resume Next
-    Set wb = GetObject(filePath)
-    On Error GoTo 0
-    If wb Is Nothing Then
-        Set wb = Workbooks.Open( _
-            fileName:=filePath, _
-            ReadOnly:=True, _
-            UpdateLinks:=0, _
-            IgnoreReadOnlyRecommended:=True, _
-            Notify:=False)
-    End If
-    
-    If wb Is Nothing Then
-        Debug.Print labelName & " >> GAGAL buka file (dikunci/error)."
-        ffaValue = 0: totalStock = 0
-        Exit Sub
-    End If
-    
+    Set wb = Workbooks.Open(filePath, ReadOnly:=True)
     On Error Resume Next
     Set ws = wb.Sheets(sheetCode)
-    On Error GoTo ErrHandler
+    On Error GoTo 0
     
     If ws Is Nothing Then
-        Debug.Print labelName & " >> SHEET " & sheetCode & " TIDAK ADA"
-        ffaValue = 0: totalStock = 0
-    Else
-        If labelName = "CPO" Then
-            colQty = "G": colFFA = "I": rowStart = 8: rowEnd = 23
-        ElseIf labelName = "CPKO" Then
-            colQty = "F": colFFA = "H": rowStart = 8: rowEnd = 17
-        End If
-        
-        sumWeighted = 0: sumStock = 0
-        For i = rowStart To rowEnd
-            If IsNumeric(ws.Range(colQty & i).Value) And IsNumeric(ws.Range(colFFA & i).Value) Then
-                sumWeighted = sumWeighted + (ws.Range(colQty & i).Value * ws.Range(colFFA & i).Value)
-                sumStock = sumStock + ws.Range(colQty & i).Value
-            End If
-        Next i
-        
-        totalStock = sumStock
-        If sumStock > 0 Then
-            ffaValue = sumWeighted / sumStock
-        Else
-            ffaValue = 0
-        End If
-        Debug.Print labelName & " >> TotalStock=" & totalStock & ", FFA=" & ffaValue
+        wb.Close False
+        Exit Sub
     End If
     
-    wb.Close SaveChanges:=False
-    Exit Sub
+    If labelName = "CPO" Then
+        colQty = "G": colFFA = "I": rowStart = 8: rowEnd = 23
+    ElseIf labelName = "CPKO" Then
+        colQty = "F": colFFA = "H": rowStart = 8: rowEnd = 17
+    End If
     
-ErrHandler:
-    Debug.Print labelName & " >> ERROR membuka file. " & Err.Description
-    ffaValue = 0: totalStock = 0
-    On Error Resume Next: wb.Close SaveChanges:=False
+    For i = rowStart To rowEnd
+        q = ws.Range(colQty & i).Value
+        ffa = ws.Range(colFFA & i).Value
+        
+        If IsNumeric(q) And q > 0 Then
+            If labelName = "CPO" Then
+                If IsNumeric(ffa) Then
+                    If ffa < 3.5 Then
+                        qtyConsumer = qtyConsumer + q
+                    ElseIf ffa >= 3.5 And ffa <= 5 Then
+                        qtyBulk = qtyBulk + q
+                    ElseIf ffa > 5 Then
+                        qtyHighFFA = qtyHighFFA + q
+                    End If
+                End If
+            ElseIf labelName = "CPKO" Then
+                totalStock = totalStock + q
+            End If
+        End If
+    Next i
+    
+    If labelName = "CPO" Then
+        totalStock = qtyConsumer + qtyBulk + qtyHighFFA
+    End If
+    
+    wb.Close False
+End Sub
+
+' ========================
+' Generate Daily Storage CPO & CPKO
+' ========================
+Sub GenerateDailyStorageCPOCPKO(wsDest As Worksheet, ByRef currentRow As Long, targetDate As Date)
+    Dim cpoFilePath As String, cpkoFilePath As String
+    Dim sheetCodeCPO As String, sheetCodeCPKO As String
+    Dim monthName As String, folderCPKO As String, folderCPO As String
+    Dim qtyCons As Double, qtyBulk As Double, qtyHigh As Double
+    Dim cpoTotal As Double, cpkoTotal As Double
+    
+    ' --- format kode sheet di file sumber ---
+    sheetCodeCPO = Format(targetDate, "ddmm")   ' contoh: "2209"
+    sheetCodeCPKO = Format(targetDate, "dd")    ' contoh: "22"
+    
+    ' --- Buat nama bulan Indonesia ---
+    monthName = GetIndonesianMonth(Month(targetDate), Year(targetDate))
+    
+    ' --- File CPO (Palmitic) ---
+    folderCPO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\Daily Storage 2025 (Palmitic)\"
+    cpoFilePath = folderCPO & "8. DAILY STORAGE " & monthName & " (Palmitic Base).xlsx"
+    If Dir(cpoFilePath) = "" Then
+        cpoFilePath = CariFileDailyStorage(folderCPO, monthName, "PALMITIC")
+    End If
+    
+    ' --- File CPKO (Non Palmitic) ---
+    folderCPKO = "Z:\Document Share (Marunda All)\Quality Management\1. Daily Storage\DAILY STORAGE 2025\"
+    cpkoFilePath = folderCPKO & "07. Daily Storage " & monthName & " (Non Palmitic Base).xlsx"
+    If Dir(cpkoFilePath) = "" Then
+        cpkoFilePath = CariFileDailyStorage(folderCPKO, monthName, "NON PALMITIC")
+    End If
+    
+    ' --- Hitung CPO ---
+    Call GetCPOCPKOValue(cpoFilePath, sheetCodeCPO, "CPO", cpoTotal, qtyCons, qtyBulk, qtyHigh)
+    
+    ' --- Hitung CPKO ---
+    Call GetCPOCPKOValue(cpkoFilePath, sheetCodeCPKO, "CPKO", cpkoTotal, 0, 0, 0)
+    
+    ' --- Output ke sheet target ---
+    wsDest.Cells(currentRow, 1).Value = "DAILY STORAGE CPO & CPKO"
+    currentRow = currentRow + 1
+    wsDest.Cells(currentRow, 1).Value = "Tanggal : " & Format(targetDate, "dd/mm/yyyy")
+    currentRow = currentRow + 2
+    
+    wsDest.Cells(currentRow, 1).Value = "CPO Stock"
+    currentRow = currentRow + 1
+    wsDest.Cells(currentRow, 1).Value = "- Consumer : " & Format(qtyCons / 1000, "#,##0") & " MT"
+    currentRow = currentRow + 1
+    wsDest.Cells(currentRow, 1).Value = "- Bulk     : " & Format(qtyBulk / 1000, "#,##0") & " MT"
+    currentRow = currentRow + 1
+    wsDest.Cells(currentRow, 1).Value = "- High FFA : " & Format(qtyHigh / 1000, "#,##0") & " MT"
+    currentRow = currentRow + 2
+    
+    wsDest.Cells(currentRow, 1).Value = "CPKO Stock : " & Format(cpkoTotal / 1000, "#,##0") & " MT"
+    currentRow = currentRow + 2
 End Sub
 
